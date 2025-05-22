@@ -122,30 +122,40 @@ class MathAgent(BaseAgent):
         Determine if the question requires calculation or just explanation.
         If it requires calculation, extract the mathematical expression to calculate.
         
+        IMPORTANT: Your entire response MUST be a valid JSON object and nothing else.
+        Do not include any explanatory text before or after the JSON.
+        Do not use markdown formatting for the JSON.
+        
         Respond with a JSON object containing:
         1. "use_calculator": true/false
-        2. "expression": the expression to calculate (if applicable)
+        2. "expression": the expression to calculate (if applicable, or null if not needed)
         3. "reasoning": brief explanation of your decision
+        
+        Example of correct response format:
+        {"use_calculator": true, "expression": "5*9+3", "reasoning": "The question requires calculation of the given expression."}
         """
         
-        # Let GeminiAPIError propagate to be handled by Flask's error handler
-        response = self.gemini_client.generate_text(
-            prompt=f"Analyze this mathematical question: {question}",
-            system_instruction=system_instruction,
-            temperature=0.2
-        )
-        
         try:
-            # Parse the JSON response
-            import json
-            analysis = json.loads(response)
-            return analysis
-        except json.JSONDecodeError as e:
-            print(f"Error parsing JSON response: {str(e)}", file=sys.stderr)
+            # Let GeminiAPIError propagate to be handled by Flask's error handler
+            response = self.gemini_client.generate_text(
+                prompt=f"Analyze this mathematical question: {question}",
+                system_instruction=system_instruction,
+                temperature=0.1
+            )
+            
+            # Use the new robust JSON parsing method
+            required_fields = ["use_calculator", "expression", "reasoning"]
+            return self.gemini_client.parse_json_response(response, required_fields)
+                
+        except GeminiAPIError:
+            # Re-raise to be handled by Flask's error handler
+            raise
+        except Exception as e:
+            print(f"Error analyzing tool need: {str(e)}", file=sys.stderr)
             # Default to not using calculator if analysis fails
             return {
                 "use_calculator": False,
-                "expression": "",
+                "expression": None,
                 "reasoning": "Could not analyze the question properly."
             }
     
