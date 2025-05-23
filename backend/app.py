@@ -15,7 +15,7 @@ app = Flask(__name__)
 
 # Configure CORS with specific allowed origins
 CORS(app, resources={
-    r"/api/*": {
+    r"/api/v1*": {
         "origins": [os.environ.get('FRONTEND_URL')],  # Frontend development
         "methods": ["GET", "POST"],  # Allowed methods
         "allow_headers": ["Content-Type"]  # Allowed headers
@@ -47,12 +47,12 @@ def handle_api_error(e):
         "status": "error"
     }), e.status_code
 
-@app.route('/api/health', methods=['GET'])
+@app.route('/api/v1/health', methods=['GET'])
 def health_check():
     """Health check endpoint to verify the API is running."""
     return jsonify({"status": "healthy", "message": "API is running"}), 200
 
-@app.route('/api/ask', methods=['POST'])
+@app.route('/api/v1/ask', methods=['POST'])
 def ask_question():
     """
     Main endpoint to ask questions to the Tutor Agent.
@@ -93,7 +93,7 @@ def ask_question():
             "status": "error"
         }), 500
 
-@app.route('/api/conversations', methods=['GET'])
+@app.route('/api/v1/conversations', methods=['GET'])
 def get_conversations():
     """Retrieve a list of active conversations."""
     try:
