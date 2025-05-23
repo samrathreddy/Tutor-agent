@@ -12,7 +12,15 @@ load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# Configure CORS with specific allowed origins
+CORS(app, resources={
+    r"/api/*": {
+        "origins": [os.environ.get('FRONTEND_URL')],  # Frontend development
+        "methods": ["GET", "POST"],  # Allowed methods
+        "allow_headers": ["Content-Type"]  # Allowed headers
+    }
+})
 
 # Initialize the Tutor Agent
 tutor_agent = TutorAgent()
@@ -58,7 +66,7 @@ def ask_question():
     try:
         # Parse the request data
         data = request.json
-        
+        print(f"Received data: {data}")  # Debugging line to check incoming data
         if not data or 'question' not in data:
             return jsonify({"error": "Missing required parameter: question", "status": "error"}), 400
         
