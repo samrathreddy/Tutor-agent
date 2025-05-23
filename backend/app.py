@@ -105,3 +105,21 @@ def get_conversations():
             "error": "An error occurred while retrieving conversations. Please try again later.",
             "status": "error"
         }), 500
+
+@app.route('/api/v1/conversations/<conversation_id>/messages', methods=['GET'])
+def get_conversation_messages(conversation_id):
+    """Retrieve messages for a specific conversation."""
+    try:
+        conversation = tutor_agent.get_conversation(conversation_id)
+        if not conversation:
+            return jsonify({
+                "error": "Conversation not found",
+                "status": "error"
+            }), 404
+        return jsonify({"messages": conversation["messages"]}), 200
+    except Exception as e:
+        print(f"Error retrieving conversation messages: {str(e)}")
+        return jsonify({
+            "error": "An error occurred while retrieving messages. Please try again later.",
+            "status": "error"
+        }), 500

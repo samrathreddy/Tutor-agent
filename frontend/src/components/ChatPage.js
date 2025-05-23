@@ -11,7 +11,8 @@ import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
 import IconButton from '@mui/material/IconButton';
 import CloseIcon from '@mui/icons-material/Close';
-
+import Box from '@mui/material/Box';
+import ConversationSidebar from './ConversationSidebar';
 import Message from './Message';
 import ApiService from '../services/api';
 
@@ -27,6 +28,23 @@ function ChatPage() {
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [errorOpen, setErrorOpen] = useState(false);
+
+  // Handle conversation selection
+  const handleSelectConversation = async (selectedId) => {
+    setConversationId(selectedId);
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const response = await ApiService.getConversationMessages(selectedId);
+      setMessages(response.messages);
+    } catch (error) {
+      console.error('Error loading conversation messages:', error);
+      setError(error.message || 'Failed to load conversation messages');
+    } finally {
+      setIsLoading(false);
+    }
+  };
   
   // Reference to the messages container for auto-scrolling
   const messagesEndRef = useRef(null);
@@ -136,16 +154,21 @@ function ChatPage() {
       return;
     }
     setErrorOpen(false);
-  };
-
-  return (
-    <Container maxWidth="lg">
-      <Typography variant="h4" component="h1" gutterBottom>
-        Chat with Multi-Agent Tutor
-      </Typography>
-      
-      <Paper elevation={3} className="chat-container">
-        {/* Chat messages area */}
+  };  return (
+    <Container maxWidth={false} sx={{ p: 0 }}>
+      <Box sx={{ display: 'flex' }}>
+        <ConversationSidebar
+          onSelectConversation={handleSelectConversation}
+          currentConversationId={conversationId}
+        />
+        
+        <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - ${260}px)` } }}>
+          <Typography variant="h4" component="h1" gutterBottom>
+            Chat with Multi-Agent Tutor
+          </Typography>
+          
+          <Paper elevation={3} className="chat-container">
+            {/* Chat messages area */}
         <div className="chat-messages">
           {messages.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
@@ -200,8 +223,9 @@ function ChatPage() {
           >
             Send
           </Button>
-        </div>
-      </Paper>
+        </div>          </Paper>
+        </Box>
+      </Box>
       
       {/* Error notification */}
       <Snackbar
@@ -226,10 +250,9 @@ function ChatPage() {
           }
         >
           {error}
-        </Alert>
-      </Snackbar>
+        </Alert>      </Snackbar>
     </Container>
   );
 }
 
-export default ChatPage; 
+export default ChatPage;

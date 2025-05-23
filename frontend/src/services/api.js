@@ -59,6 +59,29 @@ const ApiService = {
       }
     }
   },
+  /**
+   * Get messages for a specific conversation.
+   * 
+   * @param {string} conversationId - The ID of the conversation
+   * @returns {Promise} - Promise containing the conversation messages
+   */
+  getConversationMessages: async (conversationId) => {
+    try {
+      const response = await axios.get(`${API_URL}/conversations/${conversationId}/messages`);
+      return response.data;
+    } catch (error) {
+      console.error('Error getting conversation messages:', error);
+      if (error.response?.data?.message) {
+        throw new Error(error.response.data.message);
+      } else if (error.response?.data?.error) {
+        throw new Error(error.response.data.error);
+      } else if (error.message) {
+        throw new Error(error.message);
+      } else {
+        throw new Error('Failed to retrieve conversation messages. Please try again later.');
+      }
+    }
+  },
 
   /**
    * Check if the API is healthy.
