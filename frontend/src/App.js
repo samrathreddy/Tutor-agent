@@ -7,7 +7,6 @@ import Box from '@mui/material/Box';
 
 // Components
 import Header from './components/Header';
-import Footer from './components/Footer';
 import ChatPage from './components/ChatPage';
 import AboutPage from './components/AboutPage';
 
