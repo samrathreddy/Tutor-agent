@@ -10,6 +10,8 @@ from utils.db import MongoDB
 from utils.json_encoder import MongoJSONEncoder
 from bson import ObjectId
 import datetime
+from flask_limiter.errors import RateLimitExceeded
+from utils.rate_limiter import init_limiter
 
 # Load environment variables
 load_dotenv()
@@ -17,6 +19,9 @@ load_dotenv()
 # Initialize Flask app
 app = Flask(__name__)
 app.json_encoder = MongoJSONEncoder
+
+# Initialize rate limiter
+rate_limiter = init_limiter(app)
 
 # Configure CORS with specific allowed origins
 CORS(app, resources={
@@ -44,6 +49,16 @@ def handle_exception(e):
         "status": "error"
     }), 500
 
+# Rate limit error handler
+@app.errorhandler(RateLimitExceeded)
+def handle_rate_limit_error(e):
+    """Handler for rate limit exceeded errors."""
+    return jsonify({
+        "error": "Rate limit exceeded. Please try again later.",
+        "status": "error",
+        "retry_after": e.retry_after
+    }), 429
+
 # Custom error responses
 @app.errorhandler(APIError)
 def handle_api_error(e):
@@ -54,11 +69,13 @@ def handle_api_error(e):
     }), e.status_code
 
 @app.route('/api/v1/health', methods=['GET'])
+@rate_limiter.limit_health_check
 def health_check():
     """Health check endpoint to verify the API is running."""
     return jsonify({"status": "healthy", "message": "API is running"}), 200
 
 @app.route('/api/v1/ask', methods=['POST'])
+@rate_limiter.limit_ai_requests
 def ask_question():
     """
     Main endpoint to ask questions to the Tutor Agent.
@@ -134,6 +151,7 @@ def ask_question():
         }), 500
 
 @app.route('/api/v1/conversations', methods=['GET'])
+@rate_limiter.limit_conversations_list
 def get_conversations():
     """Retrieve a list of active conversations for a specific user."""
     try:
@@ -153,6 +171,7 @@ def get_conversations():
         }), 500
 
 @app.route('/api/v1/conversations/<conversation_id>', methods=['GET'])
+@rate_limiter.limit_conversation_messages
 def get_conversation_messages(conversation_id):
     """Retrieve messages for a specific conversation."""
     try:
@@ -210,6 +229,7 @@ def get_conversation_messages(conversation_id):
         }), 500
 
 @app.route('/api/v1/conversations/<conversation_id>', methods=['DELETE'])
+@rate_limiter.limit_conversation_delete
 def delete_conversation(conversation_id):
     """Delete a specific conversation."""
     try:
