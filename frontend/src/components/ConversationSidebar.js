@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Drawer from '@mui/material/Drawer';
 import List from '@mui/material/List';
 import ListItem from '@mui/material/ListItem';
@@ -16,24 +16,52 @@ import ApiService from '../services/api';
 
 const DRAWER_WIDTH = 260;
 
+// Add throttle utility
+const throttle = (func, limit) => {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  }
+};
+
 function ConversationSidebar({ onSelectConversation, currentConversationId }) {
   const [conversations, setConversations] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const prevConversationIdRef = useRef(currentConversationId);
 
-  useEffect(() => {
-    loadConversations();
-  }, []);
-
-  const loadConversations = async () => {
+  // Create throttled load conversations function
+  const throttledLoadConversations = useRef(throttle(async () => {
+    if (isLoading) return;
+    setIsLoading(true);
     try {
       const conversationsData = await ApiService.getConversations();
       setConversations(conversationsData);
     } catch (error) {
       console.error('Error loading conversations:', error);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, 2000)).current;
+
+  useEffect(() => {
+    // Only reload if the conversation ID actually changed
+    if (prevConversationIdRef.current !== currentConversationId) {
+      prevConversationIdRef.current = currentConversationId;
+      throttledLoadConversations();
+    }
+  }, [currentConversationId]);
+
+  // Initial load
+  useEffect(() => {
+    throttledLoadConversations();
+  }, []);
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);

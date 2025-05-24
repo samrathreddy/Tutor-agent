@@ -16,6 +16,18 @@ import ConversationSidebar from './ConversationSidebar';
 import Message from './Message';
 import ApiService from '../services/api';
 
+// Add throttle utility
+const throttle = (func, limit) => {
+  let inThrottle;
+  return function(...args) {
+    if (!inThrottle) {
+      func.apply(this, args);
+      inThrottle = true;
+      setTimeout(() => inThrottle = false, limit);
+    }
+  }
+};
+
 /**
  * ChatPage component for the main chat interface.
  * Handles sending questions to the backend and displaying responses.
@@ -28,6 +40,36 @@ function ChatPage() {
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [errorOpen, setErrorOpen] = useState(false);
+
+  const initRef = useRef(false);
+  const healthCheckRef = useRef(false);
+
+  // Handle conversation selection with throttling
+  const throttledHealthCheck = useRef(throttle(async () => {
+    try {
+      await ApiService.healthCheck();
+    } catch (error) {
+      setError(error.message || 'Cannot connect to the backend server. Please make sure it is running.');
+    }
+  }, 5000)).current;
+
+  // Check API health on component mount
+  useEffect(() => {
+    if (healthCheckRef.current) return;
+    healthCheckRef.current = true;
+    throttledHealthCheck();
+  }, []);
+
+  // Initialize conversation ID only once
+  useEffect(() => {
+    if (initRef.current) return;
+    initRef.current = true;
+    
+    if (!conversationId) {
+      const newId = uuidv4();
+      setConversationId(newId);
+    }
+  }, []);
 
   // Handle conversation selection
   const handleSelectConversation = async (selectedId) => {
@@ -62,24 +104,6 @@ function ChatPage() {
       setErrorOpen(true);
     }
   }, [error]);
-
-  // Check API health on component mount
-  useEffect(() => {
-    const checkApiHealth = async () => {
-      try {
-        await ApiService.healthCheck();
-      } catch (error) {
-        setError(error.message || 'Cannot connect to the backend server. Please make sure it is running.');
-      }
-    };
-    
-    checkApiHealth();
-    
-    // Initialize conversation ID
-    if (!conversationId) {
-      setConversationId(uuidv4());
-    }
-  }, [conversationId]);
 
   /**
    * Handle sending a question to the backend.
@@ -186,7 +210,7 @@ function ChatPage() {
                 key={index}
                 content={message.content}
                 role={message.role}
-                agent= {message.subject == "followup" ? "Followup" : message.agent}
+                agent= {message.subject === "followup" ? "Followup" : message.agent}
                 toolsUsed={message.toolsUsed}
                 timestamp={message.timestamp}
               />
