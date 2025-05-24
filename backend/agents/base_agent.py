@@ -71,4 +71,26 @@ class BaseAgent(ABC):
         Returns:
             A list of tool names
         """
-        return [tool.__class__.__name__ for tool in self.tools] 
+        return [tool.__class__.__name__ for tool in self.tools]
+    
+    def _format_conversation_history(self, context: Optional[Dict[str, Any]] = None) -> str:
+        """
+        Format conversation history into a string for Gemini.
+        
+        Args:
+            context: Optional context containing conversation history
+            
+        Returns:
+            A string containing formatted conversation history
+        """
+        if not context or "conversation_history" not in context:
+            return ""
+            
+        history = context["conversation_history"]
+        formatted_history = "\nPrevious conversation:\n"
+        
+        for msg in history:
+            role = "User" if msg["role"] == "user" else "Assistant"
+            formatted_history += f"{role}: {msg['content']}\n"
+            
+        return formatted_history

@@ -86,12 +86,12 @@ class GeminiClient:
         Avoid using the word "general" as a subject.
         Link it with the nearest subject.
         Don't hallucinate.
-        
+        If you feel like the query is dependent or incomplete, use subject "followup".
         IMPORTANT: Your entire response MUST be a valid JSON object and nothing else.
         Do not include any explanatory text before or after the JSON.
         Do not use markdown formatting for the JSON.
         The JSON must contain exactly these fields:
-        1. "subject": The primary subject area (math, physics, chemistry, biology, history, literature, etc.)
+        1. "subject": The primary subject area (math, physics, followup etc.)
         2. "confidence": Your confidence level (0.0-1.0)
         3. "reasoning": Brief explanation of why you chose this subject
         
@@ -107,6 +107,9 @@ class GeminiClient:
             # Use the parse_json helper method
             required_fields = ["subject", "confidence", "reasoning"]
             analysis = self.parse_json_response(response, required_fields)
+            print("$"*50)
+            print(analysis)
+            print("$"*50)
             return analysis
             
         except GeminiAPIError:

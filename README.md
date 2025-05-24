@@ -90,9 +90,9 @@ pip install -r requirements.txt
 5. Run the backend server:
 
 ```bash
-python run.py
+python app.py
 or
-python3 run.py
+python3 app.py
 ```
 
 ### Frontend Setup

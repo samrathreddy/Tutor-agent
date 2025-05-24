@@ -40,9 +40,11 @@ class MathAgent(BaseAgent):
             A dictionary containing the response
             
         Raises:
-            GeminiAPIError: If there's an issue with the Gemini API
-        """
+            GeminiAPIError: If there's an issue with the Gemini API        """
         try:
+            # Store context for use in other methods
+            self._current_context = context
+            
             # First, determine if we need to use a tool
             tool_analysis = self._analyze_tool_need(question)
             
@@ -62,10 +64,12 @@ class MathAgent(BaseAgent):
                 except Exception as e:
                     print(f"Error using calculator: {str(e)}", file=sys.stderr)
                     # Continue to general response if calculator fails
-            
-            # For all other cases, use the knowledge base
+              # For all other cases, use the knowledge base
             try:
-                kb_result = self.use_tool('KnowledgeBase', query=question)
+                # Include conversation history in the knowledge base query
+                conversation_history = self._format_conversation_history(context)
+                query = f"{question}\n{conversation_history}"
+                kb_result = self.use_tool('KnowledgeBase', query=query)
                 
                 if kb_result.get('success', False):
                     return {
@@ -76,11 +80,12 @@ class MathAgent(BaseAgent):
                     }
             except Exception as e:
                 print(f"Error using knowledge base: {str(e)}", file=sys.stderr)
-            
-            # Fallback to direct AI response if tools fail but Gemini is working
+              # Fallback to direct AI response if tools fail but Gemini is working
+            conversation_history = self._format_conversation_history(context)
+            prompt = f"Answer this math question with step-by-step explanation: {question}\n Previous Convesration: {conversation_history}"
             response = self.gemini_client.generate_text(
-                prompt=f"Answer this math question with step-by-step explanation: {question}",
-                system_instruction="You are a helpful math tutor. Provide clear explanations.",
+                prompt=prompt,
+                system_instruction="You are a helpful math tutor. Provide clear explanations. When there is conversation history, make sure your response maintains context with previous exchanges.",
                 temperature=0.7
             )
             
@@ -172,18 +177,21 @@ class MathAgent(BaseAgent):
             
         Raises:
             GeminiAPIError: If there's an issue with the Gemini API
-        """
-        # Create a prompt that includes the calculation result
+        """        # Create a prompt that includes the calculation result
         result = calc_result.get('result', '')
         expression = calc_result.get('expression', '')
+        
+        # Get conversation history if available
+        context = getattr(self, '_current_context', None)
+        conversation_history = self._format_conversation_history(context) if context else ""
         
         prompt = f"""
         Question: {question}
         Calculation performed: {expression}
         Result: {result}
+        {conversation_history}
         
-        Please provide a clear, educational explanation of this result in the context of the question.
-        """
+        Please provide a clear, educational explanation of this result in the context of the question and any previous conversation."""
         
         system_instruction = """
         You are a mathematics tutor.

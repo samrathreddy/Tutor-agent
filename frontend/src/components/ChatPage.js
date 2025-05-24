@@ -173,7 +173,7 @@ function ChatPage() {
           {messages.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
               <Typography variant="body1">
-                Ask me any question about math, physics, or other subjects!
+                Ask me any question about math, physics for now!
               </Typography>
               <Typography variant="body2" sx={{ mt: 1 }}>
                 For example: "What is the derivative of x²?" or "Explain Newton's laws of motion."

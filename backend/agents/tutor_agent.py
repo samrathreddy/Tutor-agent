@@ -87,12 +87,19 @@ class TutorAgent(BaseAgent):
             
             # Get the specialist agent
             specialist = self.specialist_agents.get(agent_key)
+              # Process the question with the specialist agent
+            # Get the last 3 turns of conversation (up to 6 messages - 3 user, 3 assistant)
+            messages = self.conversations[conversation_id]["messages"]
+            last_messages = messages[-6:] if len(messages) > 6 else messages
             
-            # Process the question with the specialist agent
             context = {
                 "conversation_id": conversation_id,
-                "conversation_history": self.conversations[conversation_id]["messages"]
+                "conversation_history": last_messages,
             }
+            print('*'*50)
+            print(f"Delegating to {specialist.name} for question: {question}")
+            print(f"Context: {context}")
+            print('*'*50)
             
             response = specialist.process_question(question, context)
             
