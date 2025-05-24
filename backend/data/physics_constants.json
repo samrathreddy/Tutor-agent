@@ -1,0 +1,50 @@
+{
+    "c": {
+        "value": 299792458,
+        "unit": "m/s",
+        "description": "Speed of light in vacuum",
+        "symbol": "c"
+    },
+    "G": {
+        "value": 6.67430e-11,
+        "unit": "m³/(kg⋅s²)",
+        "description": "Gravitational constant",
+        "symbol": "G"
+    },
+    "h": {
+        "value": 6.62607015e-34,
+        "unit": "J⋅s",
+        "description": "Planck constant",
+        "symbol": "h"
+    },
+    "e": {
+        "value": 1.602176634e-19,
+        "unit": "C",
+        "description": "Elementary charge",
+        "symbol": "e"
+    },
+    "me": {
+        "value": 9.1093837015e-31,
+        "unit": "kg",
+        "description": "Electron mass",
+        "symbol": "mₑ"
+    },
+    "mp": {
+        "value": 1.67262192369e-27,
+        "unit": "kg",
+        "description": "Proton mass",
+        "symbol": "mₚ"
+    },
+    "k": {
+        "value": 1.380649e-23,
+        "unit": "J/K",
+        "description": "Boltzmann constant",
+        "symbol": "k"
+    },
+    "epsilon0": {
+        "value": 8.8541878128e-12,
+        "unit": "F/m",
+        "description": "Vacuum electric permittivity",
+        "symbol": "ε₀"
+    }
+} 

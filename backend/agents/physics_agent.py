@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional
 from .base_agent import BaseAgent
 from tools.calculator import Calculator
 from tools.knowledge_base import KnowledgeBase
+from tools.physics_constants import PhysicsConstants
 from utils.gemini_client import GeminiClient
 from utils.errors import GeminiAPIError
 
@@ -13,8 +14,8 @@ class PhysicsAgent(BaseAgent):
     """
     Specialist agent for handling physics questions.
     
-    This agent can use tools like a calculator and a physics-specific knowledge base
-    to solve physics problems.
+    This agent can use tools like a calculator, physics constants lookup, and a 
+    physics-specific knowledge base to solve physics problems.
     """
     
     def __init__(self):
@@ -24,6 +25,7 @@ class PhysicsAgent(BaseAgent):
         # Register tools
         self.register_tool(Calculator())
         self.register_tool(KnowledgeBase(subject="physics"))
+        self.register_tool(PhysicsConstants())
         
         # Initialize Gemini client for generating responses
         self.gemini_client = GeminiClient()
@@ -40,33 +42,41 @@ class PhysicsAgent(BaseAgent):
             A dictionary containing the response
             
         Raises:
-            GeminiAPIError: If there's an issue with the Gemini API        """
+            GeminiAPIError: If there's an issue with the Gemini API
+        """
         try:
             # Store context for use in other methods
             self._current_context = context
             
-            # First, determine if we need to use a tool
+            # First, determine if we need to use tools
             tool_analysis = self._analyze_tool_need(question)
+            
+            # Check if we need to look up constants
+            if tool_analysis.get('use_constants', False):
+                try:
+                    constant_name = tool_analysis.get('constant_name')
+                    constants_result = self.use_tool('PhysicsConstants', constant_name=constant_name)
+                    
+                    if constants_result.get('success', False):
+                        # Generate a response that includes the constant information
+                        return self._generate_response_with_constant(question, constants_result)
+                except Exception as e:
+                    print(f"Error using physics constants: {str(e)}", file=sys.stderr)
             
             # If we need to use a calculator, do so
             if tool_analysis.get('use_calculator', False):
                 try:
-                    # Extract the expression to calculate
                     expression = tool_analysis.get('expression', '')
                     if expression:
-                        # Use the calculator tool
                         calc_result = self.use_tool('Calculator', expression=expression)
                         
-                        # If calculation was successful, include it in the response
                         if calc_result.get('success', False):
-                            # Generate a response that includes the calculation
                             return self._generate_response_with_calculation(question, calc_result)
                 except Exception as e:
                     print(f"Error using calculator: {str(e)}", file=sys.stderr)
-                    # Continue to general response if calculator fails
-              # For all other cases, use the knowledge base
+            
+            # For all other cases, use the knowledge base
             try:
-                # Include conversation history in the knowledge base query
                 conversation_history = self._format_conversation_history(context)
                 query = f"{question}\n{conversation_history}"
                 kb_result = self.use_tool('KnowledgeBase', query=query)
@@ -80,7 +90,8 @@ class PhysicsAgent(BaseAgent):
                     }
             except Exception as e:
                 print(f"Error using knowledge base: {str(e)}", file=sys.stderr)
-              # Fallback to direct AI response if tools fail but Gemini is working
+            
+            # Fallback to direct AI response
             conversation_history = self._format_conversation_history(context)
             prompt = f"Answer this physics question with step-by-step explanation: {question}\n Previous Context: {conversation_history}"
             response = self.gemini_client.generate_text(
@@ -97,7 +108,6 @@ class PhysicsAgent(BaseAgent):
             }
             
         except GeminiAPIError:
-            # Re-raise the GeminiAPIError to be caught by Flask's error handler
             raise
         except Exception as e:
             print(f"Error in Physics Agent: {str(e)}", file=sys.stderr)
@@ -111,7 +121,7 @@ class PhysicsAgent(BaseAgent):
     
     def _analyze_tool_need(self, question: str) -> Dict[str, Any]:
         """
-        Analyze if the question requires a specific tool.
+        Analyze if the question requires specific tools.
         
         Args:
             question: The question to analyze
@@ -124,8 +134,10 @@ class PhysicsAgent(BaseAgent):
         """
         system_instruction = """
         You are a physics question analyzer.
-        Determine if the question requires calculation or just explanation.
-        If it requires calculation, extract the mathematical expression to calculate.
+        Determine if the question requires:
+        1. Calculation
+        2. Physics constants lookup
+        3. Just explanation
         
         IMPORTANT: Your entire response MUST be a valid JSON object and nothing else.
         Do not include any explanatory text before or after the JSON.
@@ -134,35 +146,87 @@ class PhysicsAgent(BaseAgent):
         Respond with a JSON object containing:
         1. "use_calculator": true/false
         2. "expression": the expression to calculate (if applicable, or null if not needed)
-        3. "reasoning": brief explanation of your decision
-        
-        Example of correct response format:
-        {"use_calculator": true, "expression": "9.8 * 2.5", "reasoning": "The question requires calculating the gravitational force."}
+        3. "use_constants": true/false
+        4. "constant_name": the name of the constant to look up (if applicable, or null if not needed)
+        5. "reasoning": brief explanation of your decision
         """
         
         try:
-            # Let GeminiAPIError propagate to be handled by Flask's error handler
             response = self.gemini_client.generate_text(
                 prompt=f"Analyze this physics question: {question}",
                 system_instruction=system_instruction,
                 temperature=0.1
             )
             
-            # Use the new robust JSON parsing method
-            required_fields = ["use_calculator", "expression", "reasoning"]
+            required_fields = ["use_calculator", "expression", "use_constants", "constant_name", "reasoning"]
             return self.gemini_client.parse_json_response(response, required_fields)
                 
         except GeminiAPIError:
-            # Re-raise to be handled by Flask's error handler
             raise
         except Exception as e:
             print(f"Error analyzing tool need: {str(e)}", file=sys.stderr)
-            # Default to not using calculator if analysis fails
             return {
                 "use_calculator": False,
                 "expression": None,
+                "use_constants": False,
+                "constant_name": None,
                 "reasoning": "Could not analyze the question properly."
             }
+    
+    def _generate_response_with_constant(self, question: str, constants_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Generate a response that includes constant information.
+        
+        Args:
+            question: The original question
+            constants_result: The result from the physics constants tool
+            
+        Returns:
+            A dictionary containing the response
+            
+        Raises:
+            GeminiAPIError: If there's an issue with the Gemini API
+        """
+        constant = constants_result.get('constant', {})
+        
+        context = getattr(self, '_current_context', None)
+        conversation_history = self._format_conversation_history(context) if context else ""
+        
+        prompt = f"""
+        Question: {question}
+        Constant Information:
+        - Name: {constant.get('description', '')}
+        - Symbol: {constant.get('symbol', '')}
+        - Value: {constant.get('value', '')}
+        - Unit: {constant.get('unit', '')}
+        {conversation_history}
+        
+        Please provide a clear explanation of this constant in the context of the question,
+        including its significance in physics and how it's typically used."""
+        
+        system_instruction = """
+        You are a physics tutor.
+        Explain the physics constant clearly, including:
+        1. Its significance in physics
+        2. Common applications
+        3. Related equations or principles
+        4. Historical context if relevant
+        Be educational in your response.
+        """
+        
+        response = self.gemini_client.generate_text(
+            prompt=prompt,
+            system_instruction=system_instruction,
+            temperature=0.7
+        )
+        
+        return {
+            "agent": self.name,
+            "response": response,
+            "tools_used": ["PhysicsConstants"],
+            "constant_info": constant,
+            "confidence": 0.95
+        }
     
     def _generate_response_with_calculation(self, question: str, calc_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -177,11 +241,10 @@ class PhysicsAgent(BaseAgent):
             
         Raises:
             GeminiAPIError: If there's an issue with the Gemini API
-        """        # Create a prompt that includes the calculation result
+        """
         result = calc_result.get('result', '')
         expression = calc_result.get('expression', '')
         
-        # Get conversation history if available
         context = getattr(self, '_current_context', None)
         conversation_history = self._format_conversation_history(context) if context else ""
         
@@ -191,8 +254,8 @@ class PhysicsAgent(BaseAgent):
         Result: {result}
         {conversation_history}
         
-        Please provide a clear, educational explanation of this result in the context of the question, any previous conversation, 
-        and include relevant physics principles and concepts."""
+        Please provide a clear, educational explanation of this result in the context of the question,
+        any previous conversation, and include relevant physics principles and concepts."""
         
         system_instruction = """
         You are a physics tutor.
@@ -201,7 +264,6 @@ class PhysicsAgent(BaseAgent):
         Use proper scientific notation and be educational in your response.
         """
         
-        # Let GeminiAPIError propagate to be handled by Flask's error handler
         response = self.gemini_client.generate_text(
             prompt=prompt,
             system_instruction=system_instruction,

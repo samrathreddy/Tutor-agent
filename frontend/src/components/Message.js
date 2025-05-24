@@ -1,5 +1,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
+import rehypeRaw from 'rehype-raw';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import Box from '@mui/material/Box';
@@ -111,6 +112,7 @@ function Message({ content, role, agent, toolsUsed, timestamp, isTyping }) {
           <TypingIndicator />
         ) : (
           <ReactMarkdown
+            rehypePlugins={[rehypeRaw]}
             components={{
               // Custom rendering for code blocks with syntax highlighting
               code({ node, inline, className, children, ...props }) {
@@ -120,6 +122,12 @@ function Message({ content, role, agent, toolsUsed, timestamp, isTyping }) {
                     style={atomDark}
                     language={match[1]}
                     PreTag="div"
+                    customStyle={{
+                      margin: '1em 0',
+                      padding: '16px',
+                      borderRadius: '8px',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                    }}
                     {...props}
                   >
                     {String(children).replace(/\n$/, '')}
@@ -128,6 +136,26 @@ function Message({ content, role, agent, toolsUsed, timestamp, isTyping }) {
                   <code className={className} {...props}>
                     {children}
                   </code>
+                );
+              },
+              // Custom rendering for superscript
+              sup({ node, children, ...props }) {
+                return (
+                  <Typography
+                    component="sup"
+                    variant="inherit"
+                    sx={{
+                      fontSize: '0.75em',
+                      lineHeight: '0',
+                      position: 'relative',
+                      verticalAlign: 'baseline',
+                      top: '-0.5em',
+                      mx: '0.1em'
+                    }}
+                    {...props}
+                  >
+                    {children}
+                  </Typography>
                 );
               }
             }}

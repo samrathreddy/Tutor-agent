@@ -150,6 +150,8 @@ code {
 /* Markdown content styling */
 .markdown-content {
   line-height: 1.6;
+  font-size: 1rem;
+  color: inherit;
 }
 
 .markdown-content h1,
@@ -158,23 +160,42 @@ code {
 .markdown-content h4 {
   margin-top: 1.5em;
   margin-bottom: 0.5em;
+  color: inherit;
 }
 
 .markdown-content p {
   margin: 0.8em 0;
+  line-height: 1.6;
+  min-height: 1.6em;
+  color: inherit;
 }
 
 .markdown-content pre {
-  background-color: #f5f5f5;
-  padding: 10px;
-  border-radius: 5px;
+  background-color: #1e1e1e !important;
+  padding: 16px;
+  border-radius: 8px;
   overflow-x: auto;
+  margin: 1em 0;
+  border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .markdown-content code {
-  background-color: #f5f5f5;
-  padding: 2px 5px;
-  border-radius: 3px;
+  background-color: rgba(255, 255, 255, 0.1);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: inherit;
+}
+
+.markdown-content sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+  vertical-align: baseline;
+  top: -0.5em;
+  margin: 0 0.1em;
+  color: inherit;
+  font-family: inherit;
 }
 
 .markdown-content table {

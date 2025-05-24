@@ -2,7 +2,7 @@ flask==2.3.3
 flask-cors==4.0.0
 python-dotenv==1.0.0
 requests==2.31.0
-google-generativeai
+google-generativeai==0.8.5
 sympy==1.12
 numpy==2.2.6
 gunicorn==21.2.0 
