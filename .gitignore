@@ -49,3 +49,4 @@ build/
 .DS_Store 
 PRD.md
 package-lock.json
+.vercel/

@@ -51,11 +51,11 @@ class GeminiClient:
                 response = self.model.generate_content(prompt, generation_config=generation_config)
             
             # Return the text response
-            print("--------------------------------")
-            print(prompt)
-            print(system_instruction)
-            print(response.text)
-            print("--------------------------------")
+            # print("--------------------------------")
+            # print(prompt)
+            # print(system_instruction)
+            # print(response.text)
+            # print("--------------------------------")
             return response.text
             
         except Exception as e:
@@ -107,9 +107,9 @@ class GeminiClient:
             # Use the parse_json helper method
             required_fields = ["subject", "confidence", "reasoning"]
             analysis = self.parse_json_response(response, required_fields)
-            print("$"*50)
-            print(analysis)
-            print("$"*50)
+            # print("$"*50)
+            # print(analysis)
+            # print("$"*50)
             return analysis
             
         except GeminiAPIError:

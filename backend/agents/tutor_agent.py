@@ -10,6 +10,7 @@ from agents.math_agent import MathAgent
 from agents.physics_agent import PhysicsAgent
 from utils.gemini_client import GeminiClient
 from utils.errors import GeminiAPIError
+from utils.db import MongoDB
 
 class TutorAgent(BaseAgent):
     """
@@ -32,15 +33,16 @@ class TutorAgent(BaseAgent):
         # Initialize Gemini client for question analysis
         self.gemini_client = GeminiClient()
         
-        # Store conversation history
-        self.conversations = {}
+        # Initialize MongoDB connection
+        self.db = MongoDB.get_instance()
     
-    def process_question(self, question: str, conversation_id: Optional[str] = None) -> Dict[str, Any]:
+    def process_question(self, question: str, user_id: str, conversation_id: str ) -> Dict[str, Any]:
         """
         Process a question by delegating to the appropriate specialist agent.
         
         Args:
-            question: The question to process
+            question: The question text to process
+            user_id: The ID of the user asking the question
             conversation_id: Optional ID for conversation tracking
             
         Returns:
@@ -50,31 +52,36 @@ class TutorAgent(BaseAgent):
             GeminiAPIError: If there's an issue with the Gemini API
         """
         try:
-            # Create or retrieve conversation context
+            # Create or retrieve conversation from MongoDB
             if not conversation_id:
-                conversation_id = str(uuid.uuid4())
-            
-            if conversation_id not in self.conversations:
-                self.conversations[conversation_id] = {
-                    "id": conversation_id,
-                    "created_at": time.time(),
-                    "messages": [],
-                    "title": self._generate_title(question)  # Add default title based on first message
-                }
+                # Create new conversation with title based on first message
+                conversation = self.db.create_conversation(
+                    user_id=user_id,
+                    title=self._generate_title(question)
+                )
+                if not conversation:
+                    raise Exception("Failed to create conversation")
+                conversation_id = conversation['conversation_id']
             
             # Analyze the question to determine which specialist should handle it
             analysis = self.gemini_client.analyze_question(question)
+            if not analysis or not isinstance(analysis, dict):
+                raise Exception("Failed to analyze question")
             
             # Map the subject to our specialist agents
             subject = analysis.get('subject', '').lower()
             confidence = analysis.get('confidence', 0.0)
             
-            # Add the question to the conversation history
-            self.conversations[conversation_id]["messages"].append({
-                "role": "user",
-                "content": question,
-                "timestamp": time.time()
-            })
+            # Add the user question to MongoDB
+            # user_message = {
+            #     "role": "user",
+            #     "content": question,
+            #     "user_id": user_id,
+            #     "timestamp": time.time()
+            # }
+            # conversation = self.db.add_message_to_conversation(conversation_id, user_message)
+            # if not conversation:
+            #     raise Exception("Failed to save user message")
             
             # Select the appropriate agent based on subject
             if subject == "mathematics" or subject == "math":
@@ -88,34 +95,38 @@ class TutorAgent(BaseAgent):
             
             # Get the specialist agent
             specialist = self.specialist_agents.get(agent_key)
-              # Process the question with the specialist agent
-            # Get the last 3 turns of conversation (up to 6 messages - 3 user, 3 assistant)
-            messages = self.conversations[conversation_id]["messages"]
-            last_messages = messages[-6:] if len(messages) > 6 else messages
+            if not specialist:
+                raise Exception(f"Specialist agent {agent_key} not found")
             
+            # Get conversation context from MongoDB
+            conversation = self.db.get_conversation_messages(conversation_id, user_id)
+            print(f"Conversation: {conversation}")
+            if not conversation:
+                raise Exception("Failed to retrieve conversation")
+            
+            # Get the last 3 turns of conversation (up to 6 messages - 3 user, 3 assistant)
+            messages = conversation.get('messages', [])
+            last_messages = messages[-6:] if len(messages) > 6 else messages
+            print("%"*50)
+            print("%"*50)
+            print("%"*50)
+            print(f"Last messages: {last_messages}")
             context = {
                 "conversation_id": conversation_id,
                 "conversation_history": last_messages,
             }
-            print('*'*50)
-            print(f"Delegating to {specialist.name} for question: {question}")
-            print(f"Context: {context}")
-            print('*'*50)
             
+            # Process the question with the specialist agent
             response = specialist.process_question(question, context)
+            if not response or not isinstance(response, dict):
+                raise Exception("Invalid response from specialist agent")
             
-            # Add the response to conversation history
-            self.conversations[conversation_id]["messages"].append({
-                "role": "assistant",
-                "content": response.get("response", ""),
-                "agent": response.get("agent", ""),
-                "timestamp": time.time()
-            })
-            
-            # Return the response with additional metadata
+            response_text = response.get("response")
+            if not response_text:
+                raise Exception("Empty response from specialist agent")
             return {
-                "response": response.get("response", ""),
-                "agent": response.get("agent", ""),
+                "response": response_text,
+                "agent": response.get("agent", specialist.name),
                 "subject": subject,
                 "confidence": confidence,
                 "conversation_id": conversation_id,
@@ -128,17 +139,19 @@ class TutorAgent(BaseAgent):
         except Exception as e:
             print(f"Error in Tutor Agent: {str(e)}", file=sys.stderr)
             
-            # Add error info to conversation history
-            if conversation_id in self.conversations:
-                self.conversations[conversation_id]["messages"].append({
+            # Add error message to MongoDB
+            if conversation_id:
+                error_message = {
                     "role": "system",
                     "content": f"Error: {str(e)}",
+                    "user_id": user_id,
                     "timestamp": time.time()
-                })
+                }
+                self.db.add_message_to_conversation(conversation_id, error_message)
             
             # Return an error response
             return {
-                "error": "An error occurred while processing your question",
+                "error": str(e),
                 "conversation_id": conversation_id,
                 "agent": self.name,
                 "tools_used": []
@@ -155,37 +168,33 @@ class TutorAgent(BaseAgent):
             A string containing a generated title
         """
         # Truncate the message if it's too long
-        max_title_length = 20
+        max_title_length = 50  # Increased from 20 to allow for more meaningful titles
         title = first_message[:max_title_length]
         if len(first_message) > max_title_length:
             title = title.rsplit(' ', 1)[0] + '...'
         return title
     
-    def get_conversations(self) -> List[Dict[str, Any]]:
+    def get_conversations(self, user_id: str) -> List[Dict[str, Any]]:
         """
-        Get a list of all conversations.
+        Get a list of all conversations for a user.
         
+        Args:
+            user_id: The ID of the user whose conversations to retrieve
+            
         Returns:
             A list of conversation dictionaries
         """
-        return [
-            {
-                "id": conv_id,
-                "created_at": conv["created_at"],
-                "message_count": len(conv["messages"]),
-                "title": conv["title"]  # Include the title in the response
-            }
-            for conv_id, conv in self.conversations.items()
-        ]
+        return self.db.get_user_conversations_metadata(user_id)
     
-    def get_conversation(self, conversation_id: str) -> Optional[Dict[str, Any]]:
+    def get_conversation(self, conversation_id: str, user_id: str) -> Optional[Dict[str, Any]]:
         """
         Get a specific conversation by ID.
         
         Args:
             conversation_id: The ID of the conversation to retrieve
+            user_id: The ID of the user requesting the conversation
             
         Returns:
             The conversation dictionary or None if not found
         """
-        return self.conversations.get(conversation_id) 
+        return self.db.get_conversation_messages(conversation_id, user_id) 

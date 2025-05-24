@@ -33,7 +33,8 @@ class MongoDB:
         """Create necessary indexes for better query performance."""
         try:
             self.db.users.create_index("user_id", unique=True)
-            self.db.conversations.create_index([("conversation_id", 1), ("user_id", 1)], unique=True)
+            self.db.conversations.create_index("conversation_id", unique=True)
+            self.db.conversations.create_index([("user_id", 1)])
             print("MongoDB indexes created successfully")
         except Exception as e:
             print(f"Error creating MongoDB indexes: {str(e)}")
@@ -53,18 +54,21 @@ class MongoDB:
     def get_or_create_user(self, user_id):
         """Get or create a user document."""
         try:
-            user = self.db.users.find_one({"user_id": user_id})
-            if not user:
-                user = {
-                    "user_id": user_id,
-                    "conversation_ids": [],
-                    "created_at": datetime.utcnow(),
-                    "last_active": datetime.utcnow()
-                }
-                result = self.db.users.insert_one(user)
-                if result.inserted_id:
-                    print(f"Created new user with ID: {user_id}")
-                    user['_id'] = result.inserted_id
+            user = self.db.users.find_one_and_update(
+                {"user_id": user_id},
+                {
+                    "$setOnInsert": {
+                        "user_id": user_id,
+                        "conversation_ids": [],
+                        "created_at": datetime.utcnow(),
+                    },
+                    "$set": {
+                        "last_active": datetime.utcnow()
+                    }
+                },
+                upsert=True,
+                return_document=True
+            )
             return self._serialize_document(user)
         except Exception as e:
             print(f"Error in get_or_create_user: {str(e)}")
@@ -92,18 +96,9 @@ class MongoDB:
     def get_conversation_messages(self, conversation_id, user_id):
         """Get messages for a specific conversation."""
         try:
-            # First verify that the user has access to this conversation
-            user = self.db.users.find_one({"user_id": user_id})
-            if not user:
-                print(f"User not found: {user_id}")
-                return None
-
-            # Try to find the conversation using either _id or conversation_id
+            # Find the conversation
             conversation = self.db.conversations.find_one({
-                "$or": [
-                    {"_id": ObjectId(conversation_id)},
-                    {"conversation_id": conversation_id}
-                ],
+                "conversation_id": conversation_id,
                 "user_id": user_id
             })
 
@@ -114,16 +109,25 @@ class MongoDB:
             return self._serialize_document(conversation)
         except Exception as e:
             print(f"Error in get_conversation_messages: {str(e)}")
-            print(f"Attempted to find conversation with ID: {conversation_id}")
             return None
 
     def create_conversation(self, user_id, title=None):
         """Create a new conversation."""
         try:
-            conversation_id = ObjectId()
+            # First ensure user exists
+            user = self.get_or_create_user(user_id)
+            if not user:
+                print(f"Failed to get/create user: {user_id}")
+                return None
+            print("*"*50)
+            print("*"*50)
+            print("*"*50)
+            print(f"User: {user}")
+            id = ObjectId()
+            conversation_id = str(id)
             conversation = {
-                "_id": conversation_id,
-                "conversation_id": str(conversation_id),
+                "_id": id,
+                "conversation_id": conversation_id,
                 "user_id": user_id,
                 "title": title or "New Conversation",
                 "messages": [],
@@ -147,10 +151,7 @@ class MongoDB:
             )
             
             if update_result.modified_count == 0:
-                print(f"Failed to update user {user_id} with new conversation")
-                # Rollback conversation creation
-                self.db.conversations.delete_one({"_id": result.inserted_id})
-                return None
+                print(f"Warning: User {user_id} conversation list not updated")
             
             print(f"Created new conversation: {conversation_id} for user: {user_id}")
             return self._serialize_document(conversation)
@@ -161,7 +162,7 @@ class MongoDB:
     def add_message_to_conversation(self, conversation_id, message_data):
         """Add a message to a conversation."""
         try:
-            # First verify the conversation exists
+            # First verify the conversation exists and get its current state
             conversation = self.db.conversations.find_one({
                 "conversation_id": conversation_id
             })
@@ -170,13 +171,30 @@ class MongoDB:
                 print(f"Conversation not found: {conversation_id}")
                 return None
             
-            message_data["timestamp"] = datetime.utcnow()
+            # Verify user has access to this conversation
+            if conversation["user_id"] != message_data.get("user_id"):
+                print(f"User {message_data.get('user_id')} does not have access to conversation {conversation_id}")
+                return None
             
-            # Add the message and update the conversation
-            result = self.db.conversations.update_one(
+            # Ensure timestamp is datetime
+            if isinstance(message_data.get("timestamp"), (int, float)):
+                message_data["timestamp"] = datetime.fromtimestamp(message_data["timestamp"])
+            elif not message_data.get("timestamp"):
+                message_data["timestamp"] = datetime.utcnow()
+            
+            # Update the conversation with the new message
+            result = self.db.conversations.find_one_and_update(
                 {"conversation_id": conversation_id},
                 {
-                    "$push": {"messages": message_data},
+                    "$push": {
+                        "messages": {
+                            "role": message_data.get("role", "user"),
+                            "content": message_data.get("content", ""),
+                            "user_id": message_data.get("user_id"),
+                            "timestamp": message_data["timestamp"],
+                            "agent": message_data.get("agent")
+                        }
+                    },
                     "$set": {
                         "updated_at": datetime.utcnow(),
                         "last_message": {
@@ -185,16 +203,16 @@ class MongoDB:
                             "timestamp": message_data["timestamp"]
                         }
                     }
-                }
+                },
+                return_document=True
             )
             
-            if result.modified_count == 0:
+            if not result:
                 print(f"Failed to add message to conversation: {conversation_id}")
                 return None
                 
             print(f"Added message to conversation: {conversation_id}")
-            updated_conversation = self.db.conversations.find_one({"conversation_id": conversation_id})
-            return self._serialize_document(updated_conversation)
+            return self._serialize_document(result)
             
         except Exception as e:
             print(f"Error in add_message_to_conversation: {str(e)}")

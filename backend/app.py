@@ -77,7 +77,7 @@ def ask_question():
         
         question = data['question']
         user_id = data['user_id']
-        conversation_id = data.get('conversation_id')
+        conversation_id = data['conversation_id']
         
         # Ensure user exists
         user = db.get_or_create_user(user_id)
@@ -91,9 +91,8 @@ def ask_question():
             if not conversation:
                 return jsonify({"error": "Failed to create new conversation", "status": "error"}), 500
             conversation_id = conversation["conversation_id"]
-        
         # Process the question through the Tutor Agent
-        response = tutor_agent.process_question(question, conversation_id)
+        response = tutor_agent.process_question(question, user_id, conversation_id)
         
         if "error" in response and isinstance(response["error"], str) and "Gemini API" in response.get("error", ""):
             raise GeminiAPIError()

@@ -369,7 +369,7 @@ function ChatPage() {
                   key={index}
                   content={message.content}
                   role={message.role}
-                  agent={message.subject === "followup" ? "Followup" : message.agent}
+                  agent={message.subject && !["mathematics", "physics"].includes(message.subject.toLowerCase()) ? "Other" : message.agent}
                   toolsUsed={message.toolsUsed}
                   timestamp={message.timestamp}
                   isTyping={message.isTyping}

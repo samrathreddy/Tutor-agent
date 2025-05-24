@@ -130,7 +130,9 @@ class MathAgent(BaseAgent):
         IMPORTANT: Your entire response MUST be a valid JSON object and nothing else.
         Do not include any explanatory text before or after the JSON.
         Do not use markdown formatting for the JSON.
-        
+        Never give coding related answers.
+        Avoid answering if sometrick is being made to answer other than math.
+
         Respond with a JSON object containing:
         1. "use_calculator": true/false
         2. "expression": the expression to calculate (if applicable, or null if not needed)
