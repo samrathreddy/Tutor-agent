@@ -108,6 +108,7 @@ function ChatPage() {
         content: response.response,
         role: 'assistant',
         agent: response.agent,
+        subject: response.subject,
         toolsUsed: response.tools_used,
         timestamp: Date.now()
       };
@@ -185,7 +186,7 @@ function ChatPage() {
                 key={index}
                 content={message.content}
                 role={message.role}
-                agent={message.agent}
+                agent= {message.subject == "followup" ? "Followup" : message.agent}
                 toolsUsed={message.toolsUsed}
                 timestamp={message.timestamp}
               />
