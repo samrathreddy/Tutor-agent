@@ -12,6 +12,7 @@ import ConversationSidebar from './ConversationSidebar';
 import Message from './Message';
 import ApiService from '../services/api';
 import Typography from '@mui/material/Typography';
+import { getUserId } from '../utils/sessionManager';
 
 const DRAWER_WIDTH = 280; // Match the width from ConversationSidebar
 
@@ -32,10 +33,12 @@ function ChatPage() {
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(false);
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [errorOpen, setErrorOpen] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [conversations, setConversations] = useState([]);
   
   // All refs declared together at the top
   const messagesEndRef = useRef(null);
@@ -50,13 +53,34 @@ function ChatPage() {
     }
   }, 5000)).current;
 
-  // Initialize conversation ID only once
+  // Load user's conversations on mount
   useEffect(() => {
-    if (initRef.current) return;
-    initRef.current = true;
-    
-    if (!conversationId) {
-    }
+    const loadUserConversations = async () => {
+      if (isLoadingConversations) return;
+      
+      try {
+        setIsLoadingConversations(true);
+        const response = await ApiService.getConversations();
+        setConversations(response);
+        
+        // If there are conversations, select the most recent one
+        if (response && response.length > 0) {
+          const mostRecent = response[0];
+          setConversationId(mostRecent._id);
+          await loadConversationMessages(mostRecent._id);
+        } else {
+          // If no conversations exist, start a new one
+          handleNewChat();
+        }
+      } catch (error) {
+        console.error('Error loading conversations:', error);
+        setError(error.message || 'Failed to load conversations');
+      } finally {
+        setIsLoadingConversations(false);
+      }
+    };
+
+    loadUserConversations();
   }, []);
 
   // Check API health on component mount
@@ -66,15 +90,27 @@ function ChatPage() {
     throttledHealthCheck();
   }, []);
 
+  // Function to load conversation messages
+  const loadConversationMessages = async (convId) => {
+    try {
+      const messagesResponse = await ApiService.getConversationMessages(convId);
+      setMessages(messagesResponse.messages || []);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      setError(error.message || 'Failed to load messages');
+    }
+  };
+
   // Handle conversation selection
   const handleSelectConversation = async (selectedId) => {
+    if (!selectedId || isLoading) return;
+    
     setConversationId(selectedId);
     setIsLoading(true);
     setError(null);
     
     try {
-      const conversationResponse = await ApiService.getConversationMessages(selectedId);
-      setMessages(conversationResponse.messages);
+      await loadConversationMessages(selectedId);
     } catch (error) {
       console.error('Error loading conversation messages:', error);
       setError(error.message || 'Failed to load conversation messages');
@@ -82,7 +118,7 @@ function ChatPage() {
       setIsLoading(false);
     }
   };
-  
+
   // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -97,14 +133,24 @@ function ChatPage() {
     }
   }, [error]);
 
-  const handleSendMessage = async () => {
-    if (!inputValue.trim()) return;
+  // Refresh conversations list
+  const refreshConversations = async () => {
+    if (isLoadingConversations) return;
     
-    // Create new conversation if none exists
-    if (!conversationId) {
-      const newId = uuidv4();
-      setConversationId(newId);
+    try {
+      setIsLoadingConversations(true);
+      const updatedConversations = await ApiService.getConversations();
+      setConversations(updatedConversations);
+    } catch (error) {
+      console.error('Error refreshing conversations:', error);
+      setError(error.message || 'Failed to refresh conversations');
+    } finally {
+      setIsLoadingConversations(false);
     }
+  };
+
+  const handleSendMessage = async () => {
+    if (!inputValue.trim() || isTyping) return;
     
     const userMessage = {
       content: inputValue,
@@ -130,6 +176,10 @@ function ChatPage() {
       // Send the question to the API
       const agentResponse = await ApiService.askQuestion(inputValue, conversationId);
       
+      if (agentResponse.conversation_id && !conversationId) {
+        setConversationId(agentResponse.conversation_id);
+      }
+      
       // Remove the temporary typing message and add the real response
       const assistantMessage = {
         content: agentResponse.response,
@@ -145,6 +195,9 @@ function ChatPage() {
           .filter(msg => !msg.isTyping)
           .concat(assistantMessage)
       );
+
+      // Refresh conversations list after sending a message
+      await refreshConversations();
     } catch (error) {
       console.error('Error sending message:', error);
       setError(error.message || 'Failed to get a response. Please try again later.');
@@ -180,15 +233,8 @@ function ChatPage() {
   };
 
   const handleNewChat = () => {
-    const newId = uuidv4();
-    setConversationId(newId);
-    setMessages([{
-      content: "Hi! I'm your Multi-Agent Tutor. I can help you with math and physics questions. What would you like to learn about?",
-      role: 'assistant',
-      agent: 'Tutor Agent',
-      timestamp: Date.now()
-    }]);
-    setInputValue('');
+    setConversationId(null);  // Set to null to let backend create a new conversation
+    setMessages([]);
     if (inputRef.current) {
       inputRef.current.focus();
     }
@@ -197,14 +243,18 @@ function ChatPage() {
   return (
     <Box sx={{ 
       display: 'flex', 
-      height: '100%',
+      height: '100vh',
       overflow: 'hidden',
-      pt: '64px', // Add padding for header height
+      bgcolor: 'background.default',
+      pt: '64px', // Add padding for header
+      boxSizing: 'border-box',
     }}>
       <ConversationSidebar
         onSelectConversation={handleSelectConversation}
         currentConversationId={conversationId}
         onNewChat={handleNewChat}
+        conversations={conversations}
+        isLoading={isLoadingConversations}
       />
       
       <Box
@@ -213,12 +263,17 @@ function ChatPage() {
           flex: 1,
           display: 'flex',
           flexDirection: 'column',
-          height: '100%',
+          height: 'calc(100vh - 64px)', // Adjust height to account for header
           position: 'relative',
-          overflow: 'hidden',
-          ml: { xs: 0, md: `${DRAWER_WIDTH}px` }, // Only add margin on desktop
-          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` }, // Adjust width for mobile
-          transition: 'margin-left 0.3s ease', // Smooth transition for drawer
+          ml: { xs: 0, md: 0 },
+          width: { 
+            xs: '100%',
+            md: `calc(100% - ${DRAWER_WIDTH}px)`
+          },
+          transition: theme.transitions.create(['width', 'margin'], {
+            easing: theme.transitions.easing.sharp,
+            duration: theme.transitions.duration.leavingScreen,
+          }),
         }}
       >
         <Box
@@ -226,13 +281,17 @@ function ChatPage() {
             flex: 1,
             overflowY: 'auto',
             overflowX: 'hidden',
-            p: { xs: 2, sm: 3 }, // Smaller padding on mobile
+            p: { xs: 2, sm: 3 },
             display: 'flex',
             flexDirection: 'column',
             gap: 2,
             width: '100%',
             maxWidth: '100%',
             boxSizing: 'border-box',
+            pt: { xs: 2, md: 2 }, // Reset to normal padding
+            pb: 2,
+            position: 'relative',
+            left: { xs: 0, md: 0 },
             '&::-webkit-scrollbar': {
               width: '8px',
             },
@@ -259,20 +318,21 @@ function ChatPage() {
                 color: 'text.secondary',
                 textAlign: 'center',
                 gap: 2,
-                minHeight: { xs: 300, sm: 400 }, // Smaller minimum height on mobile
+                minHeight: { xs: 300, sm: 400 },
                 width: '100%',
+                mt: { xs: 4, md: 0 }, // Remove top margin on desktop
               }}
             >
               <Box sx={{ 
                 width: '100%',
                 maxWidth: '600px',
                 mx: 'auto',
-                px: { xs: 2, sm: 0 }, // Add padding on mobile
+                px: { xs: 2, sm: 0 },
               }}>
                 <Typography 
                   variant="h1" 
                   sx={{ 
-                    fontSize: { xs: '1.5rem', sm: '2rem' }, // Smaller font on mobile
+                    fontSize: { xs: '1.5rem', sm: '2rem' },
                     marginBottom: '1rem',
                     fontWeight: 600,
                     color: 'primary.main',
@@ -283,40 +343,49 @@ function ChatPage() {
                 </Typography>
                 <Typography variant="h6" sx={{ 
                   mb: 3,
-                  fontSize: { xs: '1rem', sm: '1.25rem' }, // Smaller font on mobile
+                  fontSize: { xs: '1rem', sm: '1.25rem' },
                 }}>
                   Ask me any question about math or physics!
                 </Typography>
                 <Typography variant="body1" sx={{ 
                   color: 'text.secondary',
-                  fontSize: { xs: '0.875rem', sm: '1rem' }, // Smaller font on mobile
+                  fontSize: { xs: '0.875rem', sm: '1rem' },
                 }}>
                   For example: "What is the derivative of x²?" or "Explain Newton's laws of motion."
                 </Typography>
               </Box>
             </Box>
           ) : (
-            messages.map((message, index) => (
-              <Message
-                key={index}
-                content={message.content}
-                role={message.role}
-                agent={message.subject === "followup" ? "Followup" : message.agent}
-                toolsUsed={message.toolsUsed}
-                timestamp={message.timestamp}
-                isTyping={message.isTyping}
-              />
-            ))
+            <Box sx={{ 
+              width: '100%', 
+              maxWidth: '800px', 
+              mx: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 2,
+            }}>
+              {messages.map((message, index) => (
+                <Message
+                  key={index}
+                  content={message.content}
+                  role={message.role}
+                  agent={message.subject === "followup" ? "Followup" : message.agent}
+                  toolsUsed={message.toolsUsed}
+                  timestamp={message.timestamp}
+                  isTyping={message.isTyping}
+                />
+              ))}
+            </Box>
           )}
           <div ref={messagesEndRef} />
         </Box>
 
         <Box
           sx={{
-            p: { xs: 1, sm: 2 }, // Smaller padding on mobile
+            p: { xs: 1, sm: 2 },
             borderTop: '1px solid',
             borderColor: 'divider',
-            bgcolor: 'background.default',
+            bgcolor: 'background.paper',
             position: 'sticky',
             bottom: 0,
             zIndex: 1,
@@ -330,7 +399,7 @@ function ChatPage() {
               maxWidth: '800px',
               mx: 'auto',
               width: '100%',
-              px: { xs: 1, sm: 0 }, // Add padding on mobile
+              px: { xs: 1, sm: 0 },
             }}
           >
             <TextField
@@ -369,7 +438,7 @@ function ChatPage() {
                   bgcolor: 'action.disabledBackground',
                   color: 'action.disabled',
                 },
-                height: { xs: 48, sm: 56 }, // Smaller button on mobile
+                height: { xs: 48, sm: 56 },
                 width: { xs: 48, sm: 56 },
                 flexShrink: 0,
               }}

@@ -5,4 +5,5 @@ requests==2.31.0
 google-generativeai==0.8.5
 sympy==1.12
 numpy==2.2.6
-gunicorn==21.2.0 
+gunicorn==21.2.0
+pymongo==4.6.1 

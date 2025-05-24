@@ -6,24 +6,30 @@ from flask_cors import CORS
 from dotenv import load_dotenv
 from utils.errors import APIError, GeminiAPIError
 from agents.tutor_agent import TutorAgent
+from utils.db import MongoDB
+from utils.json_encoder import MongoJSONEncoder
+from bson import ObjectId
+import datetime
 
 # Load environment variables
 load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
+app.json_encoder = MongoJSONEncoder
 
 # Configure CORS with specific allowed origins
 CORS(app, resources={
     r"/api/v1*": {
-        "origins": [os.environ.get('FRONTEND_URL')],  # Frontend development
-        "methods": ["GET", "POST"],  # Allowed methods
-        "allow_headers": ["Content-Type"]  # Allowed headers
+        "origins": [os.environ.get('FRONTEND_URL')],
+        "methods": ["GET", "POST", "DELETE"],
+        "allow_headers": ["Content-Type"]
     }
 })
 
-# Initialize the Tutor Agent
+# Initialize the Tutor Agent and MongoDB
 tutor_agent = TutorAgent()
+db = MongoDB.get_instance()
 
 # Error handling middleware
 @app.errorhandler(Exception)
@@ -60,33 +66,68 @@ def ask_question():
     Expected JSON payload:
     {
         "question": "What is the derivative of x^2?",
-        "conversation_id": "optional-conversation-id"
+        "conversation_id": "optional-conversation-id",
+        "user_id": "required-user-id"
     }
     """
     try:
-        # Parse the request data
         data = request.json
-        print(f"Received data: {data}")  # Debugging line to check incoming data
-        if not data or 'question' not in data:
-            return jsonify({"error": "Missing required parameter: question", "status": "error"}), 400
+        if not data or 'question' not in data or 'user_id' not in data:
+            return jsonify({"error": "Missing required parameters: question and user_id", "status": "error"}), 400
         
         question = data['question']
-        conversation_id = data.get('conversation_id', None)
+        user_id = data['user_id']
+        conversation_id = data.get('conversation_id')
+        
+        # Ensure user exists
+        user = db.get_or_create_user(user_id)
+        if not user:
+            return jsonify({"error": "Failed to create or retrieve user", "status": "error"}), 500
+        
+        # Create new conversation if none exists
+        conversation = None
+        if not conversation_id:
+            conversation = db.create_conversation(user_id, title=question[:50] + "...")
+            if not conversation:
+                return jsonify({"error": "Failed to create new conversation", "status": "error"}), 500
+            conversation_id = conversation["conversation_id"]
         
         # Process the question through the Tutor Agent
         response = tutor_agent.process_question(question, conversation_id)
         
-        # Check if there was an error from Gemini API
         if "error" in response and isinstance(response["error"], str) and "Gemini API" in response.get("error", ""):
             raise GeminiAPIError()
         
+        # Add user message to conversation
+        user_message = {
+            "user_id": user_id,
+            "content": question,
+            "role": "user",
+            "timestamp": datetime.datetime.utcnow()
+        }
+        conversation = db.add_message_to_conversation(conversation_id, user_message)
+        if not conversation:
+            return jsonify({"error": "Failed to store user message", "status": "error"}), 500
+        
+        # Add assistant message to conversation
+        assistant_message = {
+            "user_id": user_id,
+            "content": response["response"],
+            "role": "assistant",
+            "agent": response.get("agent"),
+            "subject": response.get("subject"),
+            "tools_used": response.get("tools_used"),
+            "timestamp": datetime.datetime.utcnow()
+        }
+        conversation = db.add_message_to_conversation(conversation_id, assistant_message)
+        if not conversation:
+            return jsonify({"error": "Failed to store assistant message", "status": "error"}), 500
+        
+        # Add conversation_id to the response
+        response["conversation_id"] = conversation_id
         return jsonify(response), 200
-    
-    except GeminiAPIError as e:
-        # Re-raise to be caught by the custom error handler
-        raise
+        
     except Exception as e:
-        # Log the error (in a production environment, use a proper logging system)
         print(f"Error processing question: {str(e)}")
         return jsonify({
             "error": "An error occurred while processing your question. Please try again later.",
@@ -95,9 +136,15 @@ def ask_question():
 
 @app.route('/api/v1/conversations', methods=['GET'])
 def get_conversations():
-    """Retrieve a list of active conversations."""
+    """Retrieve a list of active conversations for a specific user."""
     try:
-        conversations = tutor_agent.get_conversations()
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({"error": "Missing required parameter: user_id", "status": "error"}), 400
+        
+        # Ensure user exists
+        db.get_or_create_user(user_id)
+        conversations = db.get_user_conversations_metadata(user_id)
         return jsonify(conversations), 200
     except Exception as e:
         print(f"Error retrieving conversations: {str(e)}")
@@ -106,20 +153,82 @@ def get_conversations():
             "status": "error"
         }), 500
 
-@app.route('/api/v1/conversations/<conversation_id>/messages', methods=['GET'])
+@app.route('/api/v1/conversations/<conversation_id>', methods=['GET'])
 def get_conversation_messages(conversation_id):
     """Retrieve messages for a specific conversation."""
     try:
-        conversation = tutor_agent.get_conversation(conversation_id)
-        if not conversation:
+        # Log the request details for debugging
+        print(f"Fetching conversation. ID: {conversation_id}")
+        
+        # Validate user_id presence
+        user_id = request.args.get('user_id')
+        if not user_id:
+            print("Missing user_id in request")
             return jsonify({
-                "error": "Conversation not found",
-                "status": "error"
+                "error": "Missing required parameter: user_id",
+                "status": "error",
+                "code": "MISSING_USER_ID"
+            }), 400
+
+        # Log user details
+        print(f"User ID: {user_id}")
+
+        # Validate user exists
+        user = db.get_or_create_user(user_id)
+        if not user:
+            print(f"Failed to validate user: {user_id}")
+            return jsonify({
+                "error": "User not found or could not be created",
+                "status": "error",
+                "code": "INVALID_USER"
+            }), 401
+
+        # Get conversation with messages
+        conversation = db.get_conversation_messages(conversation_id, user_id)
+        if not conversation:
+            print(f"Conversation not found. ID: {conversation_id}, User: {user_id}")
+            return jsonify({
+                "error": "Conversation not found or access denied",
+                "status": "error",
+                "code": "CONVERSATION_NOT_FOUND"
             }), 404
-        return jsonify({"messages": conversation["messages"]}), 200
+
+        # Log successful retrieval
+        print(f"Successfully retrieved conversation: {conversation_id}")
+        return jsonify({
+            "status": "success",
+            "data": conversation
+        }), 200
+
     except Exception as e:
         print(f"Error retrieving conversation messages: {str(e)}")
+        print(f"Conversation ID: {conversation_id}")
+        print(f"User ID: {user_id if 'user_id' in locals() else 'Not provided'}")
         return jsonify({
-            "error": "An error occurred while retrieving messages. Please try again later.",
+            "error": "An error occurred while retrieving messages",
+            "status": "error",
+            "code": "SERVER_ERROR"
+        }), 500
+
+@app.route('/api/v1/conversations/<conversation_id>', methods=['DELETE'])
+def delete_conversation(conversation_id):
+    """Delete a specific conversation."""
+    try:
+        user_id = request.args.get('user_id')
+        if not user_id:
+            return jsonify({"error": "Missing required parameter: user_id", "status": "error"}), 400
+        
+        success = db.delete_conversation(conversation_id, user_id)
+        if not success:
+            return jsonify({
+                "error": "Conversation not found or access denied",
+                "status": "error"
+            }), 404
+        
+        return jsonify({"status": "success", "message": "Conversation deleted successfully"}), 200
+    except Exception as e:
+        print(f"Error deleting conversation: {str(e)}")
+        return jsonify({
+            "error": "An error occurred while deleting the conversation. Please try again later.",
             "status": "error"
         }), 500

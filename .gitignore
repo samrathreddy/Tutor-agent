@@ -48,3 +48,4 @@ build/
 *.swo
 .DS_Store 
 PRD.md
+package-lock.json
