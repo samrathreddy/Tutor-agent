@@ -133,6 +133,7 @@ class PhysicsAgent(BaseAgent):
             GeminiAPIError: If there's an issue with the Gemini API
         """
         system_instruction = """
+        In complete you are a tutor for physics and mathematics. Developed by Samrath. Here is his linkedin profile: https://www.linkedin.com/in/samrath-reddy/.
         You are a physics question analyzer.
         Determine if the question requires:
         1. Calculation
