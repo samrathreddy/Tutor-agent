@@ -58,7 +58,8 @@ class TutorAgent(BaseAgent):
                 self.conversations[conversation_id] = {
                     "id": conversation_id,
                     "created_at": time.time(),
-                    "messages": []
+                    "messages": [],
+                    "title": self._generate_title(question)  # Add default title based on first message
                 }
             
             # Analyze the question to determine which specialist should handle it
@@ -143,6 +144,23 @@ class TutorAgent(BaseAgent):
                 "tools_used": []
             }
     
+    def _generate_title(self, first_message: str) -> str:
+        """
+        Generate a title for a conversation based on the first message.
+        
+        Args:
+            first_message: The first message in the conversation
+            
+        Returns:
+            A string containing a generated title
+        """
+        # Truncate the message if it's too long
+        max_title_length = 20
+        title = first_message[:max_title_length]
+        if len(first_message) > max_title_length:
+            title = title.rsplit(' ', 1)[0] + '...'
+        return title
+    
     def get_conversations(self) -> List[Dict[str, Any]]:
         """
         Get a list of all conversations.
@@ -154,7 +172,8 @@ class TutorAgent(BaseAgent):
             {
                 "id": conv_id,
                 "created_at": conv["created_at"],
-                "message_count": len(conv["messages"])
+                "message_count": len(conv["messages"]),
+                "title": conv["title"]  # Include the title in the response
             }
             for conv_id, conv in self.conversations.items()
         ]

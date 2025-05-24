@@ -51,14 +51,12 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
   }, 2000)).current;
 
   useEffect(() => {
-    // Only reload if the conversation ID actually changed
     if (prevConversationIdRef.current !== currentConversationId) {
       prevConversationIdRef.current = currentConversationId;
       throttledLoadConversations();
     }
   }, [currentConversationId]);
 
-  // Initial load
   useEffect(() => {
     throttledLoadConversations();
   }, []);
@@ -102,8 +100,15 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
               <ChatBubbleOutlineIcon />
             </ListItemIcon>
             <ListItemText
-              primary={`Conversation ${conversation.id.slice(0, 6)}...`}
+              primary={conversation.title || `Conversation ${conversation.id.slice(0, 6)}...`}
               secondary={formatDate(conversation.created_at)}
+              primaryTypographyProps={{
+                sx: {
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
+                }
+              }}
             />
           </ListItem>
         ))}
