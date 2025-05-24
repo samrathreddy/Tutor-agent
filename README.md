@@ -5,24 +5,65 @@
 1. [Project Overview](#project-overview)
 2. [Live Demo](#live-demo)
 3. [Screenshot](#screenshot)
-4. [Architecture](#architecture)
-5. [Directory Structure & Index](#directory-structure--index)
-6. [Setup & Installation](#setup--installation)
-7. [Configuration & Environment](#configuration--environment)
-8. [Usage Guide](#usage-guide)
-9. [Development Playbook](#development-playbook)
-10. [Deployment](#deployment)
-11. [Best Practices](#best-practices)
-12. [Contributing](#contributing)
-13. [FAQ](#faq)
-14. [Challenges & Solutions](#challenges--solutions)
-15. [References & Further Reading](#references--further-reading)
+4. [Key Features](#key-features)
+5. [Architecture](#architecture)
+6. [Directory Structure & Index](#directory-structure--index)
+7. [Setup & Installation](#setup--installation)
+8. [Configuration & Environment](#configuration--environment)
+9. [Usage Guide](#usage-guide)
+10. [Development Playbook](#development-playbook)
+11. [Deployment](#deployment)
+12. [Best Practices](#best-practices)
+13. [Contributing](#contributing)
+14. [FAQ](#faq)
+15. [Challenges & Solutions](#challenges--solutions)
+16. [References & Further Reading](#references--further-reading)
 
 ---
 
 ## Project Overview
 
 **Tutor Agent** is an AI-powered educational assistant that leverages a multi-agent along with multi turn architecture to provide specialized tutoring in mathematics and physics (with extensibility for more domains). It uses Google's Gemini API for LLM-powered reasoning, and routes student queries to the most appropriate specialist agent, which can use tools like calculators and knowledge bases to generate comprehensive, step-by-step answers.
+
+---
+
+## Key Features
+
+
+### Smart Routing
+
+- Automatic subject detection
+- Context-aware agent selection
+- Seamless agent switching when needed
+- Multi-agent collaboration for complex queries
+
+### Specialist Agents
+
+- Math Agent for mathematical problems
+- Physics Agent for physics concepts
+- Extensible architecture for new domains
+- Tool-equipped agents for specialized tasks
+
+### Multi-Turn Conversations
+
+- Maintains context across multiple interactions
+- Builds on previous questions and answers
+- Allows follow-up questions and clarifications
+- Persistent conversation history with MongoDB
+
+### Rate Limiting
+
+- Protects API endpoints from abuse
+- Configurable limits per user/IP
+- Redis-based rate limiting implementation
+- Graceful handling of limit exceeded cases
+
+### Caching with Redis
+
+- Fast response caching for rate limit
+- Session management and temporary storage
+- Configurable cache expiration policies
+
 
 ---
 
@@ -43,9 +84,9 @@
 
 ```
 Frontend (React) <--> Backend API (Flask) <--> Gemini API & MongoDB
-                          |
-                    Tutor Agent (Router)
-                    /      |        \
+                          |                        |
+                    Tutor Agent (Router)      Redis Cache
+                    /      |        \         (Rate Limiting)
                    /       |         \
             Math Agent  Physics Agent  (More coming soon)
                |            |             |
@@ -54,6 +95,7 @@ Frontend (React) <--> Backend API (Flask) <--> Gemini API & MongoDB
 
 - **Frontend:** React SPA for chat, conversation management, and agent explanations.
 - **Backend:** Flask API for routing, agent orchestration, and persistent conversation storage (MongoDB).
+- **Redis:** Handles rate limiting, caching, and session management.
 - **Agents:** Modular Python classes for each subject/domain.
 - **Tools:** Pluggable utilities (calculator, knowledge base, constants).
 - **LLM:** Google Gemini API for analysis, explanations, and tool orchestration.
@@ -108,6 +150,7 @@ tutor-agent/
 
 - Python 3.9+
 - MongoDB (local or cloud)
+- Redis Server
 - Google Gemini API key
 
 ## Configuration & Environment
@@ -124,8 +167,13 @@ FLASK_ENV=development
 FLASK_DEBUG=1
 PORT=8000
 FRONTEND_URL=http://localhost:3000
-MONGODB_URI=m
+MONGODB_URI=
 DATABASE_NAME=
+REDIS_HOST=redis-13324.c262.us-east-1-1.ec2.redns.redis-cloud.com
+REDIS_USERNAME=default
+REDIS_PASSWORD=xxxxxxxxx
+REDIS_PORT=13324
+REDIS_DB=0
 
 # Frontend Configuration
 REACT_APP_API_URL=http://localhost:8000/api/v1
@@ -185,7 +233,6 @@ npm start
 
 ### API Endpoints
 
-All endpoints are prefixed with `/api/v1/`
 
 #### Health Check
 
@@ -283,6 +330,9 @@ All endpoints may return a 500 Internal Server Error with an appropriate error m
 - Use `.env.example` to document all required environment variables.
 - Regularly update dependencies and audit for vulnerabilities.
 - Monitor logs and errors (see `backend/utils/errors.py` and logging setup).
+- Implement proper rate limiting for production deployments.
+- Use Redis caching strategically for frequently accessed data.
+- Maintain conversation context for better user experience.
 
 ---
 
@@ -319,14 +369,16 @@ A: [Sign up for Google AI Studio](https://aistudio.google.com/app/apikey).
 - Developed robust prompt templates and system instructions for each agent and tool.
 - Implemented strict JSON parsing and error handling for LLM outputs.
 
-### 2. **Conversation Persistence for multi turn**
+### 2. **Conversation Persistence for Multi-Turn**
 
 **Challenge:** Storing and retrieving multi-turn conversations efficiently, supporting multiple users and concurrent sessions.
 
 **Solution:**
 
-- Integrated MongoDB for persistent storage of conversations and messages.
-- Designed API endpoints for conversation management and retrieval.
+- Integrated MongoDB for persistent storage of conversations and messages
+- Implemented Redis for session management and caching
+- Designed API endpoints for conversation management and retrieval
+- Maintained conversation context across multiple interactions
 
 ---
 

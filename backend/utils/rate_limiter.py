@@ -1,6 +1,7 @@
 """
 Rate limiting configuration for the API.
 """
+import os
 from flask import request
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
@@ -18,10 +19,20 @@ class RateLimiterConfig:
     """Class to manage rate limiting configuration."""
     
     def __init__(self, app):
+        # Get Redis configuration from environment variables
+        redis_host = os.environ.get('REDIS_HOST', 'localhost')
+        redis_port = os.environ.get('REDIS_PORT', '6379')
+        redis_password = os.environ.get('REDIS_PASSWORD', '')
+        redis_db = os.environ.get('REDIS_DB', '0')
+        
+        # Construct Redis URI
+        redis_uri = f"redis://:{redis_password}@{redis_host}:{redis_port}/{redis_db}" if redis_password else f"redis://{redis_host}:{redis_port}/{redis_db}"
+        
         self.limiter = Limiter(
             app=app,
             key_func=get_remote_address,
-            storage_uri="memory://",
+            storage_uri=redis_uri,
+            storage_options={"socket_connect_timeout": 30},
             strategy="fixed-window",
             default_limits=["200 per day", "50 per hour"]
         )
