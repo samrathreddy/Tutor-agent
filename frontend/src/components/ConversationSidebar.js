@@ -12,9 +12,11 @@ import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import MenuIcon from '@mui/icons-material/Menu';
+import AddIcon from '@mui/icons-material/Add';
+import Button from '@mui/material/Button';
 import ApiService from '../services/api';
 
-const DRAWER_WIDTH = 260;
+const DRAWER_WIDTH = 280;
 
 // Add throttle utility
 const throttle = (func, limit) => {
@@ -28,7 +30,7 @@ const throttle = (func, limit) => {
   }
 };
 
-function ConversationSidebar({ onSelectConversation, currentConversationId }) {
+function ConversationSidebar({ onSelectConversation, currentConversationId, onNewChat }) {
   const [conversations, setConversations] = useState([]);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -66,18 +68,74 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
   };
 
   const formatDate = (timestamp) => {
-    return new Date(timestamp * 1000).toLocaleDateString();
+    const date = new Date(timestamp * 1000);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    if (date.toDateString() === today.toDateString()) {
+      return 'Today';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Yesterday';
+    }
+    return date.toLocaleDateString();
   };
 
   const drawerContent = (
-    <>
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h6" component="div">
-          Conversations
-        </Typography>
+    <Box sx={{ 
+      height: '100%', 
+      display: 'flex', 
+      flexDirection: 'column',
+      bgcolor: 'background.default',
+      overflow: 'hidden',
+    }}>
+      <Box sx={{ 
+        p: 2, 
+        borderBottom: 1, 
+        borderColor: 'divider',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 2,
+      }}>
+        <Button
+          variant="outlined"
+          fullWidth
+          startIcon={<AddIcon />}
+          onClick={onNewChat}
+          sx={{
+            borderRadius: 2,
+            py: 1,
+            justifyContent: 'flex-start',
+            borderColor: 'divider',
+            color: 'text.primary',
+            '&:hover': {
+              borderColor: 'primary.main',
+              bgcolor: 'action.hover'
+            }
+          }}
+        >
+          New Chat
+        </Button>
       </Box>
-      <Divider />
-      <List>
+      <List sx={{ 
+        flex: 1, 
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        px: 1,
+        '&::-webkit-scrollbar': {
+          width: '4px',
+        },
+        '&::-webkit-scrollbar-track': {
+          background: 'transparent',
+        },
+        '&::-webkit-scrollbar-thumb': {
+          background: theme.palette.divider,
+          borderRadius: '4px',
+        },
+        '&::-webkit-scrollbar-thumb:hover': {
+          background: theme.palette.text.disabled,
+        }
+      }}>
         {conversations.map((conversation) => (
           <ListItem
             key={conversation.id}
@@ -88,32 +146,46 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
               if (isMobile) setMobileOpen(false);
             }}
             sx={{
+              mb: 0.5,
+              borderRadius: 2,
               '&.Mui-selected': {
-                backgroundColor: theme.palette.primary.light,
+                bgcolor: 'action.selected',
                 '&:hover': {
-                  backgroundColor: theme.palette.primary.light,
+                  bgcolor: 'action.selected',
                 },
+              },
+              '&:hover': {
+                bgcolor: 'action.hover',
               },
             }}
           >
-            <ListItemIcon>
-              <ChatBubbleOutlineIcon />
+            <ListItemIcon sx={{ minWidth: 40 }}>
+              <ChatBubbleOutlineIcon fontSize="small" />
             </ListItemIcon>
             <ListItemText
               primary={conversation.title || `Conversation ${conversation.id.slice(0, 6)}...`}
               secondary={formatDate(conversation.created_at)}
               primaryTypographyProps={{
                 sx: {
+                  fontSize: '0.9rem',
+                  fontWeight: conversation.id === currentConversationId ? 600 : 400,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
+                  color: 'text.primary'
+                }
+              }}
+              secondaryTypographyProps={{
+                sx: {
+                  fontSize: '0.75rem',
+                  color: 'text.secondary'
                 }
               }}
             />
           </ListItem>
         ))}
       </List>
-    </>
+    </Box>
   );
 
   return (
@@ -124,21 +196,60 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
           aria-label="open drawer"
           edge="start"
           onClick={handleDrawerToggle}
-          sx={{ position: 'absolute', left: 16, top: 16 }}
+          sx={{ 
+            position: 'fixed', 
+            left: 16, 
+            top: 80,
+            zIndex: (theme) => theme.zIndex.drawer + 1,
+            bgcolor: 'background.paper',
+            boxShadow: 1,
+            '&:hover': {
+              bgcolor: 'action.hover',
+            },
+          }}
         >
           <MenuIcon />
         </IconButton>
       )}
 
-      <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
+      <Box 
+        component="nav" 
+        sx={{ 
+          width: { md: DRAWER_WIDTH }, 
+          flexShrink: { md: 0 },
+          position: 'fixed',
+          left: 0,
+          top: 0,
+          height: '100%',
+          zIndex: (theme) => theme.zIndex.drawer,
+          display: { xs: 'none', md: 'block' },
+        }}
+      >
         {isMobile ? (
           <Drawer
             variant="temporary"
             open={mobileOpen}
             onClose={handleDrawerToggle}
-            ModalProps={{ keepMounted: true }}
+            ModalProps={{ 
+              keepMounted: true,
+              sx: {
+                '& .MuiBackdrop-root': {
+                  mt: '64px',
+                }
+              }
+            }}
             sx={{
-              '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+              display: { xs: 'block', md: 'none' },
+              '& .MuiDrawer-paper': { 
+                width: DRAWER_WIDTH,
+                boxSizing: 'border-box',
+                bgcolor: 'background.default',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+                mt: '64px',
+                height: 'calc(100% - 64px)',
+                overflowX: 'hidden',
+              },
             }}
           >
             {drawerContent}
@@ -147,7 +258,17 @@ function ConversationSidebar({ onSelectConversation, currentConversationId }) {
           <Drawer
             variant="permanent"
             sx={{
-              '& .MuiDrawer-paper': { boxSizing: 'border-box', width: DRAWER_WIDTH },
+              display: { xs: 'none', md: 'block' },
+              '& .MuiDrawer-paper': { 
+                width: DRAWER_WIDTH,
+                boxSizing: 'border-box',
+                bgcolor: 'background.default',
+                borderRight: '1px solid',
+                borderColor: 'divider',
+                mt: '64px',
+                height: 'calc(100% - 64px)',
+                overflowX: 'hidden',
+              },
             }}
             open
           >

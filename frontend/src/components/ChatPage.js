@@ -1,20 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import Container from '@mui/material/Container';
-import Typography from '@mui/material/Typography';
-import Paper from '@mui/material/Paper';
+import Box from '@mui/material/Box';
 import TextField from '@mui/material/TextField';
-import Button from '@mui/material/Button';
-import SendIcon from '@mui/icons-material/Send';
+import IconButton from '@mui/material/IconButton';
 import CircularProgress from '@mui/material/CircularProgress';
 import Alert from '@mui/material/Alert';
 import Snackbar from '@mui/material/Snackbar';
-import IconButton from '@mui/material/IconButton';
-import CloseIcon from '@mui/icons-material/Close';
-import Box from '@mui/material/Box';
+import SendIcon from '@mui/icons-material/Send';
+import { useTheme } from '@mui/material/styles';
 import ConversationSidebar from './ConversationSidebar';
 import Message from './Message';
 import ApiService from '../services/api';
+import Typography from '@mui/material/Typography';
+
+const DRAWER_WIDTH = 280; // Match the width from ConversationSidebar
 
 // Add throttle utility
 const throttle = (func, limit) => {
@@ -28,23 +27,21 @@ const throttle = (func, limit) => {
   }
 };
 
-/**
- * ChatPage component for the main chat interface.
- * Handles sending questions to the backend and displaying responses.
- */
 function ChatPage() {
-  // State for the chat
+  const theme = useTheme();
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [errorOpen, setErrorOpen] = useState(false);
-
+  const [isTyping, setIsTyping] = useState(false);
+  
+  // All refs declared together at the top
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
   const initRef = useRef(false);
   const healthCheckRef = useRef(false);
-
-  // Handle conversation selection with throttling
   const throttledHealthCheck = useRef(throttle(async () => {
     try {
       await ApiService.healthCheck();
@@ -53,22 +50,20 @@ function ChatPage() {
     }
   }, 5000)).current;
 
-  // Check API health on component mount
-  useEffect(() => {
-    if (healthCheckRef.current) return;
-    healthCheckRef.current = true;
-    throttledHealthCheck();
-  }, []);
-
   // Initialize conversation ID only once
   useEffect(() => {
     if (initRef.current) return;
     initRef.current = true;
     
     if (!conversationId) {
-      const newId = uuidv4();
-      setConversationId(newId);
     }
+  }, []);
+
+  // Check API health on component mount
+  useEffect(() => {
+    if (healthCheckRef.current) return;
+    healthCheckRef.current = true;
+    throttledHealthCheck();
   }, []);
 
   // Handle conversation selection
@@ -78,8 +73,8 @@ function ChatPage() {
     setError(null);
     
     try {
-      const response = await ApiService.getConversationMessages(selectedId);
-      setMessages(response.messages);
+      const conversationResponse = await ApiService.getConversationMessages(selectedId);
+      setMessages(conversationResponse.messages);
     } catch (error) {
       console.error('Error loading conversation messages:', error);
       setError(error.message || 'Failed to load conversation messages');
@@ -88,9 +83,6 @@ function ChatPage() {
     }
   };
   
-  // Reference to the messages container for auto-scrolling
-  const messagesEndRef = useRef(null);
-
   // Scroll to bottom when messages change
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -105,13 +97,15 @@ function ChatPage() {
     }
   }, [error]);
 
-  /**
-   * Handle sending a question to the backend.
-   */
   const handleSendMessage = async () => {
     if (!inputValue.trim()) return;
     
-    // Add user message to the chat
+    // Create new conversation if none exists
+    if (!conversationId) {
+      const newId = uuidv4();
+      setConversationId(newId);
+    }
+    
     const userMessage = {
       content: inputValue,
       role: 'user',
@@ -120,50 +114,57 @@ function ChatPage() {
     
     setMessages(prevMessages => [...prevMessages, userMessage]);
     setInputValue('');
-    setIsLoading(true);
+    setIsTyping(true);
     setError(null);
     
     try {
-      // Send the question to the API
-      const response = await ApiService.askQuestion(inputValue, conversationId);
-      
-      // Add assistant response to the chat
-      const assistantMessage = {
-        content: response.response,
+      // Add a temporary "typing" message
+      const tempTypingMessage = {
+        content: '',
         role: 'assistant',
-        agent: response.agent,
-        subject: response.subject,
-        toolsUsed: response.tools_used,
+        isTyping: true,
+        timestamp: Date.now()
+      };
+      setMessages(prevMessages => [...prevMessages, tempTypingMessage]);
+
+      // Send the question to the API
+      const agentResponse = await ApiService.askQuestion(inputValue, conversationId);
+      
+      // Remove the temporary typing message and add the real response
+      const assistantMessage = {
+        content: agentResponse.response,
+        role: 'assistant',
+        agent: agentResponse.agent,
+        subject: agentResponse.subject,
+        toolsUsed: agentResponse.tools_used,
         timestamp: Date.now()
       };
       
-      setMessages(prevMessages => [...prevMessages, assistantMessage]);
-      
-      // Update conversation ID if needed
-      if (response.conversation_id && !conversationId) {
-        setConversationId(response.conversation_id);
-      }
+      setMessages(prevMessages => 
+        prevMessages
+          .filter(msg => !msg.isTyping)
+          .concat(assistantMessage)
+      );
     } catch (error) {
       console.error('Error sending message:', error);
-      // Display specific error message from the backend
       setError(error.message || 'Failed to get a response. Please try again later.');
       
-      // Add error message to the chat as a system message
       const errorMessage = {
         content: `Error: ${error.message || 'Failed to get a response. Please try again later.'}`,
         role: 'system',
         timestamp: Date.now()
       };
       
-      setMessages(prevMessages => [...prevMessages, errorMessage]);
+      setMessages(prevMessages => 
+        prevMessages
+          .filter(msg => !msg.isTyping)
+          .concat(errorMessage)
+      );
     } finally {
-      setIsLoading(false);
+      setIsTyping(false);
     }
   };
 
-  /**
-   * Handle key press events in the input field.
-   */
   const handleKeyPress = (event) => {
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
@@ -171,97 +172,227 @@ function ChatPage() {
     }
   };
 
-  /**
-   * Close the error notification
-   */
   const handleCloseError = (event, reason) => {
     if (reason === 'clickaway') {
       return;
     }
     setErrorOpen(false);
-  };  return (
-    <Container maxWidth={false} sx={{ p: 0 }}>
-      <Box sx={{ display: 'flex' }}>
-        <ConversationSidebar
-          onSelectConversation={handleSelectConversation}
-          currentConversationId={conversationId}
-        />
-        
-        <Box component="main" sx={{ flexGrow: 1, p: 3, width: { sm: `calc(100% - ${260}px)` } }}>
-          <Typography variant="h4" component="h1" gutterBottom>
-            Chat with Multi-Agent Tutor
-          </Typography>
-          
-          <Paper elevation={3} className="chat-container">
-            {/* Chat messages area */}
-        <div className="chat-messages">
+  };
+
+  const handleNewChat = () => {
+    const newId = uuidv4();
+    setConversationId(newId);
+    setMessages([{
+      content: "Hi! I'm your Multi-Agent Tutor. I can help you with math and physics questions. What would you like to learn about?",
+      role: 'assistant',
+      agent: 'Tutor Agent',
+      timestamp: Date.now()
+    }]);
+    setInputValue('');
+    if (inputRef.current) {
+      inputRef.current.focus();
+    }
+  };
+
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      height: '100%',
+      overflow: 'hidden',
+      pt: '64px', // Add padding for header height
+    }}>
+      <ConversationSidebar
+        onSelectConversation={handleSelectConversation}
+        currentConversationId={conversationId}
+        onNewChat={handleNewChat}
+      />
+      
+      <Box
+        component="main"
+        sx={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          height: '100%',
+          position: 'relative',
+          overflow: 'hidden',
+          ml: { xs: 0, md: `${DRAWER_WIDTH}px` }, // Only add margin on desktop
+          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` }, // Adjust width for mobile
+          transition: 'margin-left 0.3s ease', // Smooth transition for drawer
+        }}
+      >
+        <Box
+          sx={{
+            flex: 1,
+            overflowY: 'auto',
+            overflowX: 'hidden',
+            p: { xs: 2, sm: 3 }, // Smaller padding on mobile
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+            width: '100%',
+            maxWidth: '100%',
+            boxSizing: 'border-box',
+            '&::-webkit-scrollbar': {
+              width: '8px',
+            },
+            '&::-webkit-scrollbar-track': {
+              background: 'transparent',
+            },
+            '&::-webkit-scrollbar-thumb': {
+              background: theme.palette.divider,
+              borderRadius: '4px',
+            },
+            '&::-webkit-scrollbar-thumb:hover': {
+              background: theme.palette.text.disabled,
+            },
+          }}
+        >
           {messages.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-              <Typography variant="body1">
-                Ask me any question about math, physics for now!
-              </Typography>
-              <Typography variant="body2" sx={{ mt: 1 }}>
-                For example: "What is the derivative of x²?" or "Explain Newton's laws of motion."
-              </Typography>
-            </div>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '100%',
+                color: 'text.secondary',
+                textAlign: 'center',
+                gap: 2,
+                minHeight: { xs: 300, sm: 400 }, // Smaller minimum height on mobile
+                width: '100%',
+              }}
+            >
+              <Box sx={{ 
+                width: '100%',
+                maxWidth: '600px',
+                mx: 'auto',
+                px: { xs: 2, sm: 0 }, // Add padding on mobile
+              }}>
+                <Typography 
+                  variant="h1" 
+                  sx={{ 
+                    fontSize: { xs: '1.5rem', sm: '2rem' }, // Smaller font on mobile
+                    marginBottom: '1rem',
+                    fontWeight: 600,
+                    color: 'primary.main',
+                    transition: 'color 0.3s ease',
+                  }}
+                >
+                  Welcome to Multi-Agent Tutor
+                </Typography>
+                <Typography variant="h6" sx={{ 
+                  mb: 3,
+                  fontSize: { xs: '1rem', sm: '1.25rem' }, // Smaller font on mobile
+                }}>
+                  Ask me any question about math or physics!
+                </Typography>
+                <Typography variant="body1" sx={{ 
+                  color: 'text.secondary',
+                  fontSize: { xs: '0.875rem', sm: '1rem' }, // Smaller font on mobile
+                }}>
+                  For example: "What is the derivative of x²?" or "Explain Newton's laws of motion."
+                </Typography>
+              </Box>
+            </Box>
           ) : (
             messages.map((message, index) => (
               <Message
                 key={index}
                 content={message.content}
                 role={message.role}
-                agent= {message.subject === "followup" ? "Followup" : message.agent}
+                agent={message.subject === "followup" ? "Followup" : message.agent}
                 toolsUsed={message.toolsUsed}
                 timestamp={message.timestamp}
+                isTyping={message.isTyping}
               />
             ))
           )}
-          
-          {isLoading && (
-            <div className="loading-indicator">
-              <CircularProgress size={30} />
-            </div>
-          )}
-          
-          {/* Invisible element for auto-scrolling */}
           <div ref={messagesEndRef} />
-        </div>
-        
-        {/* Chat input area */}
-        <div className="chat-input">
-          <TextField
-            fullWidth
-            placeholder="Ask a question..."
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={handleKeyPress}
-            disabled={isLoading}
-            variant="outlined"
-            size="small"
-          />
-          <Button
-            variant="contained"
-            color="primary"
-            endIcon={<SendIcon />}
-            onClick={handleSendMessage}
-            disabled={isLoading || !inputValue.trim()}
+        </Box>
+
+        <Box
+          sx={{
+            p: { xs: 1, sm: 2 }, // Smaller padding on mobile
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            bgcolor: 'background.default',
+            position: 'sticky',
+            bottom: 0,
+            zIndex: 1,
+            width: '100%',
+          }}
+        >
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1,
+              maxWidth: '800px',
+              mx: 'auto',
+              width: '100%',
+              px: { xs: 1, sm: 0 }, // Add padding on mobile
+            }}
           >
-            Send
-          </Button>
-        </div>          </Paper>
+            <TextField
+              fullWidth
+              placeholder="Ask a question..."
+              value={inputValue}
+              onChange={(e) => setInputValue(e.target.value)}
+              onKeyPress={handleKeyPress}
+              disabled={isLoading || isTyping}
+              multiline
+              maxRows={4}
+              inputRef={inputRef}
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  bgcolor: 'background.paper',
+                  '&.Mui-focused': {
+                    '& > fieldset': {
+                      borderColor: 'primary.main',
+                    },
+                  },
+                },
+              }}
+            />
+            <IconButton
+              color="primary"
+              onClick={handleSendMessage}
+              disabled={isLoading || isTyping || !inputValue.trim()}
+              sx={{
+                alignSelf: 'flex-end',
+                bgcolor: 'primary.main',
+                color: 'white',
+                '&:hover': {
+                  bgcolor: 'primary.dark',
+                },
+                '&.Mui-disabled': {
+                  bgcolor: 'action.disabledBackground',
+                  color: 'action.disabled',
+                },
+                height: { xs: 48, sm: 56 }, // Smaller button on mobile
+                width: { xs: 48, sm: 56 },
+                flexShrink: 0,
+              }}
+            >
+              {isLoading || isTyping ? (
+                <CircularProgress size={24} color="inherit" />
+              ) : (
+                <SendIcon />
+              )}
+            </IconButton>
+          </Box>
         </Box>
       </Box>
-      
-      {/* Error notification */}
+
       <Snackbar
         open={errorOpen}
         autoHideDuration={6000}
         onClose={handleCloseError}
         anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       >
-        <Alert 
-          onClose={handleCloseError} 
-          severity="error" 
+        <Alert
+          onClose={handleCloseError}
+          severity="error"
           sx={{ width: '100%' }}
           action={
             <IconButton
@@ -270,13 +401,14 @@ function ChatPage() {
               color="inherit"
               onClick={handleCloseError}
             >
-              <CloseIcon fontSize="small" />
+              <SendIcon fontSize="small" />
             </IconButton>
           }
         >
           {error}
-        </Alert>      </Snackbar>
-    </Container>
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }
 

@@ -2,6 +2,10 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import Box from '@mui/material/Box';
+import Typography from '@mui/material/Typography';
+import CircularProgress from '@mui/material/CircularProgress';
+import { useTheme } from '@mui/material/styles';
 /**
  * Component for displaying a single message in the chat.
  * 
@@ -11,19 +15,21 @@ import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
  * @param {string} props.agent - Agent name (for assistant messages)
  * @param {Array} props.toolsUsed - Tools used by the agent
  * @param {string} props.timestamp - Message timestamp
+ * @param {boolean} props.isTyping - Indicates if the agent is typing
  */
-function Message({ content, role, agent, toolsUsed, timestamp }) {
+function Message({ content, role, agent, toolsUsed, timestamp, isTyping }) {
+  const theme = useTheme();
   // Format the timestamp
   const formattedTime = new Date(timestamp).toLocaleTimeString();
   
   // Determine CSS classes based on message role
   let messageClass = '';
   if (role === 'user') {
-    messageClass = 'message user-message';
+    messageClass = 'user-message';
   } else if (role === 'assistant') {
-    messageClass = 'message assistant-message';
+    messageClass = 'assistant-message';
   } else if (role === 'system') {
-    messageClass = 'message system-message';
+    messageClass = 'system-message';
   }
   
   // Check if this is an error message
@@ -32,65 +38,122 @@ function Message({ content, role, agent, toolsUsed, timestamp }) {
   // Get agent badge class
   const getAgentBadgeClass = () => {
     if (agent && agent.toLowerCase().includes('math')) {
-      return 'agent-badge math-agent';
+      return 'math-agent';
     } else if (agent && agent.toLowerCase().includes('physics')) {
-      return 'agent-badge physics-agent';
+      return 'physics-agent';
     }
     return 'agent-badge';
   };
   
+  const TypingIndicator = () => (
+    <Box sx={{ 
+      display: 'flex', 
+      alignItems: 'center',
+      gap: 1,
+      color: theme.palette.text.secondary,
+      mt: 1
+    }}>
+      <CircularProgress size={16} thickness={4} />
+      <Typography variant="body2">
+        {agent ? `${agent} is thinking...` : 'Thinking...'}
+      </Typography>
+    </Box>
+  );
+  
   return (
-    <div className={messageClass}>
-      
-      {/* Message content with Markdown support */}
-      <div className={`markdown-content ${isErrorMessage ? 'error-content' : ''}`}>
-        <ReactMarkdown
-          components={{
-            // Custom rendering for code blocks with syntax highlighting
-            code({ node, inline, className, children, ...props }) {
-              const match = /language-(\w+)/.exec(className || '');
-              return !inline && match ? (
-                <SyntaxHighlighter
-                  style={atomDark}
-                  language={match[1]}
-                  PreTag="div"
-                  {...props}
-                >
-                  {String(children).replace(/\n$/, '')}
-                </SyntaxHighlighter>
-              ) : (
-                <code className={className} {...props}>
-                  {children}
-                </code>
-              );
-            }
-          }}
-        >
-          {content}
-        </ReactMarkdown>
-      </div>
-      
-      {/* Message metadata */}
-      <div className="message-meta">
-        <div>
-          {role === 'assistant' && agent && (
-            <span className={getAgentBadgeClass()}>{agent}</span>
+    <Box
+      className={messageClass}
+      sx={{
+        position: 'relative',
+        maxWidth: '85%',
+        minWidth: '200px',
+        p: 2,
+        borderRadius: 2,
+        ...(role === 'user' ? {
+          alignSelf: 'flex-end',
+          bgcolor: 'primary.main',
+          color: 'white',
+        } : role === 'assistant' ? {
+          alignSelf: 'flex-start',
+          bgcolor: theme.palette.mode === 'dark' ? 'background.paper' : '#f5f5f5',
+          color: 'text.primary',
+        } : {
+          alignSelf: 'center',
+          bgcolor: isErrorMessage ? '#ffebee' : '#fff8e1',
+          color: isErrorMessage ? '#c62828' : '#333',
+          width: '100%',
+          maxWidth: '600px',
+        }),
+        mb: 2,
+      }}
+    >
+      {role === 'assistant' && agent && (
+        <Box sx={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: 1, 
+          mb: 1,
+          color: theme.palette.mode === 'dark' ? 'primary.main' : 'primary.dark',
+        }}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>
+            {agent}
+          </Typography>
+          {toolsUsed && toolsUsed.length > 0 && (
+            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+              using {toolsUsed.join(', ')}
+            </Typography>
           )}
-          {role === 'system' && isErrorMessage && (
-            <span className="system-badge error-badge">Error</span>
-          )}
-          {role === 'system' && !isErrorMessage && (
-            <span className="system-badge">System</span>
-          )}
-          {role === 'assistant' && toolsUsed && toolsUsed.length > 0 && (
-            <div className="tool-usage">
-              Tools used: {toolsUsed.join(', ')}
-            </div>
-          )}
-        </div>
-        <span>{formattedTime}</span>
-      </div>
-    </div>
+        </Box>
+      )}
+
+      <Box className="markdown-content">
+        {isTyping ? (
+          <TypingIndicator />
+        ) : (
+          <ReactMarkdown
+            components={{
+              // Custom rendering for code blocks with syntax highlighting
+              code({ node, inline, className, children, ...props }) {
+                const match = /language-(\w+)/.exec(className || '');
+                return !inline && match ? (
+                  <SyntaxHighlighter
+                    style={atomDark}
+                    language={match[1]}
+                    PreTag="div"
+                    {...props}
+                  >
+                    {String(children).replace(/\n$/, '')}
+                  </SyntaxHighlighter>
+                ) : (
+                  <code className={className} {...props}>
+                    {children}
+                  </code>
+                );
+              }
+            }}
+          >
+            {content}
+          </ReactMarkdown>
+        )}
+      </Box>
+
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          mt: 2,
+          pt: 1,
+          borderTop: '1px solid',
+          borderColor: theme.palette.mode === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+          opacity: 0.8,
+        }}
+      >
+        <Typography variant="caption" sx={{ color: 'inherit' }}>
+          {formattedTime}
+        </Typography>
+      </Box>
+    </Box>
   );
 }
 

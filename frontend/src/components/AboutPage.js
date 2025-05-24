@@ -26,13 +26,13 @@ function AboutPage() {
         <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
           <Typography variant="body1" paragraph>
             The Multi-Agent Tutoring Bot is an AI-powered educational assistant that uses a sophisticated
-            multi-agent architecture to provide specialized tutoring across different subjects.
+            multi-agent architecture to provide specialized tutoring across maths and physics for now.
           </Typography>
           
           <Typography variant="body1" paragraph>
             Unlike traditional chatbots, our system employs multiple specialized agents, each an expert
             in their own domain. When you ask a question, our main Tutor Agent analyzes it and delegates
-            to the appropriate specialist (Math Agent, Physics Agent, etc.) to provide the most accurate
+            to the appropriate specialist (Math Agent, Physics Agent, others coming soon.) to provide the most accurate
             and helpful response.
           </Typography>
           
